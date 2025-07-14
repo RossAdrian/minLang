@@ -108,6 +108,7 @@ let rec lex' cs =
 
   (* Symbols and operators *)
   | ':' :: rest -> COLON :: lex' rest
+  | ',' :: rest -> COMMA :: lex' rest
   | ';' :: rest -> SEMICOLON :: lex' rest
   | '(' :: rest -> LPAREN :: lex' rest
   | ')' :: rest -> RPAREN :: lex' rest
@@ -120,12 +121,12 @@ let rec lex' cs =
   | '&' :: rest -> AND :: lex' rest
   | '%' :: rest -> MODULO :: lex' rest
   | '/' :: rest -> DIVIDE :: lex' rest
-  | '-' :: '>' :: rest -> RARROW :: lex' rest
-  | '<' :: '-' :: rest -> LARROW :: lex' rest
   | '<' :: '=' :: rest -> LOWEREQUALS :: lex' rest
   | '>' :: '=' :: rest -> GREATEREQUALS :: lex' rest
   | '-' :: rest -> MINUS :: lex' rest
   | '+' :: rest -> PLUS :: lex' rest
+  | '>' :: rest -> RARROW :: lex' rest
+  | '<' :: rest -> LARROW :: lex' rest
 
   | _ -> failwith "Unknown character in input";;
 
