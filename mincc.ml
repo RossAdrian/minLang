@@ -167,10 +167,9 @@ type expr =
 | CChar of char
 | CString of string
 | Binary of binop * expr * expr
-| Unary of uop * expr * expr
+| Unary of uop * expr
 | Call of string * expr list
-| Ident of string
-| Conditional of expr * expr * expr;;
+| Ident of string;;
 
 type statement =
 | Break
@@ -280,7 +279,7 @@ and parse_unary ts =
       let uop = Option.get (token_to_uop tkn) in
       let ts' = consume ts in
       let (e, ts'') = parse_unary ts' in
-      (Unary (uop, e, e), ts'')
+      (Unary (uop, e), ts'')
   | _ -> parse_primary ts
 
 and parse_bin_rhs min_prec lhs ts =
@@ -435,3 +434,52 @@ let parse (ts: token list) : program =
           parser (l @ [g]) ts)
 in parser [] ts;;
 
+(* ---- Semantic analysis ---- *)
+
+type symbol = string * ty * int;;
+type symbolTable = symbol list;;
+
+let stackOff (s: symbolTable): int =
+  match s with
+  | (_, _, off) :: _ -> if off <> -1 then off else 0
+  | _ -> 0;;
+
+let pushTable isGlobal (s: string) (t: ty) (tb: symbolTable) : symbolTable =
+  if isGlobal then (s, t, -1) :: tb
+  else (s, t, stackOff tb) :: tb;;
+
+let pushStack = pushTable false;;
+
+let rec lookup id = function
+| [] -> failwith ("Symbol " ^ id ^ " undefined.")
+| (id', t, off) :: _ when id = id' -> (id', t, off)
+| _ :: tb -> lookup id tb;;
+
+let lookup_ty id tb = match lookup id tb with (_, t, _) -> t;;
+
+(* Annotated AST *)
+
+type sexpr =
+| SCInt of int
+| SCChar of char
+| SCString of string
+| SBinary of binop * sexpr * sexpr
+| SUnary of uop * sexpr
+| SCall of string * sexpr list
+| SIdent of symbol;;
+
+type sstatement =
+| SBreak of string
+| SContinue of string
+| SExpr of sexpr
+| SDecl of string * ty * sexpr option
+| SReturn of sexpr option
+| SBlock of sstatement list * int
+| SWhile of sexpr * sstatement * string * string
+| SIf of sexpr * sstatement
+| SIfElse of sexpr * sstatement * sstatement
+| SLoop of sstatement;;
+
+type sglobalDecl =
+| SGlobalDecl of string * ty
+| SFuncDef of ty * string * (ty * string) list * sstatement;;
