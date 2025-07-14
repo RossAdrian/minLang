@@ -13,8 +13,8 @@ MinLang draws inspiration from C, while stripping the syntax down to the essenti
 - **Functions** with typed parameters and return values
 - **Function calls**
 - **Basic expressions** and operators:
-  - Binary: `+`, `-`, `*`, `/`, `%`, `==`, `!=`, `<`, `>`, `<=`, `>=`
-  - Unary: `-`, `!`, `*` (dereference), `&` (address-of)
+  - Binary: `+`, `-`, `*`, `/`, `%`, `==`, `!=`, `<`, `>`, `<=`, `>=`, `=`
+  - Unary: `!`, `*` (dereference), `&` (address-of)
 - **Return statements**
 - No runtime, no standard library—just minimal code and direct control
 
