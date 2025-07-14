@@ -436,6 +436,14 @@ in parser [] ts;;
 
 (* ---- Semantic analysis ---- *)
 
+(*
+Special symbol table entries:
+
+"return" * ty * 0: The return type.
+"label" * Void * -2: The break label.
+"label" * Void * -3: The continue label.
+*)
+
 type symbol = string * ty * int;;
 type symbolTable = symbol list;;
 
@@ -457,13 +465,23 @@ let rec lookup id = function
 
 let lookup_ty id tb = match lookup id tb with (_, t, _) -> t;;
 
+let lookup_return_ty tb = lookup_ty "return" tb;;
+
+let rec lookup_stack off = function
+| [] -> failwith "No such special entry"
+| (id, _, off') :: _ when off = off' -> id
+| _ :: tb -> lookup_stack off tb;;
+
+let lookup_continue tb = lookup_stack (-2) tb;;
+let lookup_break tb = lookup_stack (-3) tb;;
+
 (* Annotated AST *)
 
 type sexpr =
 | SCInt of int
 | SCChar of char
 | SCString of string
-| SBinary of binop * sexpr * sexpr
+| SBinary of binop * sexpr * sexpr * ty
 | SUnary of uop * sexpr
 | SCall of string * sexpr list
 | SIdent of symbol;;
@@ -483,3 +501,64 @@ type sstatement =
 type sglobalDecl =
 | SGlobalDecl of string * ty
 | SFuncDef of ty * string * (ty * string) list * sstatement;;
+
+(* Analysis *)
+
+let resolve_ty ty = match ty with Char -> Int | _ -> ty;;
+
+let rec check_semantic_expr (st: symbolTable) = function
+| CInt i -> (SCInt i, Int)
+| CChar c -> (SCChar c, Char)
+| CString s -> (SCString s, Ptr (Char))
+| Binary (o, lhs, rhs) -> (
+  let (lhs, lty) = check_semantic_expr st lhs in
+  let (rhs, rty) = check_semantic_expr st rhs in
+  let lty = resolve_ty lty in
+  let rty = resolve_ty rty in
+  match lty, rty, o with
+  | Int, Int, _
+  | Ptr _, Int, Plus
+  | Ptr _, Int, Minus
+  | Ptr _, Ptr _, Equals
+  | Ptr _, Ptr _, NotEquals
+  | Ptr Void, Ptr _, Assign
+  | Ptr _, Ptr Void, Assign -> screate_binary o lhs rhs lty
+  | x, y, Assign when x = y -> screate_binary o lhs rhs lty
+  | _ -> failwith "Operation not defined on this binary expression."
+)
+| Unary (o, e) -> (
+  let (e, t) = check_semantic_expr st e in
+  match o, t, e with
+  | Not, _, _ -> (SUnary (o, e), Int)
+  | Addr, _, SIdent _
+  | Addr, _, SUnary (Indir, _) -> (SUnary (o, e), Ptr t)
+  | Indir, Ptr t, _ -> (SUnary (o, e), t)
+  | _ -> failwith "Illegal unary operation typing."
+)
+| Call (callee, el) -> (
+  let fty = lookup_ty callee st in
+  match fty with
+  | FuncTy (r, lty) -> (
+    let sl = check_param_list st (el, lty) in
+    (SCall (callee, sl), r)
+  )
+  | _ -> failwith "Expected function type to call a function."
+)
+| Ident id -> (
+  match lookup id st with
+  | (id, t, off) -> (SIdent (id, t, off), t)
+)
+and screate_binary o lhs rhs lty = SBinary (o, lhs, rhs, lty), lty
+and check_param_list st = function
+| (e :: el), (t :: tl) -> (
+  let (e, t') = check_semantic_expr st e in
+  match (resolve_ty t, resolve_ty t') with
+  | x, y when x = y -> e :: check_param_list st (el, tl)
+  | Ptr _, Ptr Void -> e :: check_param_list st (el, tl)
+  | Ptr Void, Ptr _ -> e :: check_param_list st (el, tl)
+  | _ -> failwith "Typing error in function call."
+)
+| [], [] -> []
+| [], _ -> failwith "Too few arguments in function call."
+| _ -> failwith "Too many arguments in function call.";;
+
