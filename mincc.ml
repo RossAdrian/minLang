@@ -186,7 +186,7 @@ type statement =
 | Loop of statement;;
 
 type globalDecl =
-| Decl of string * ty
+| GlobalDecl of string * ty
 | FuncDef of ty * string * (ty * string) list * statement;;
 
 (* ----- The Parser ----- *)
@@ -360,3 +360,77 @@ and parse_block l = function
         parse_block (l @ [s]) ts;;
 
 (* Global declaration parser *)
+let rec parse_global_decl = function
+| FN :: IDENTIFIER id :: LPAREN :: ts -> parse_fn id ts
+| LET :: IDENTIFIER id :: COLON :: ts -> (
+    let (t, ts) = parse_ty ts in
+    match ts with
+    | SEMICOLON :: ts -> (GlobalDecl (id, t), ts)
+    | _ -> failwith "Expected `;` after global variable declaration."
+  )
+| _ -> failwith "Unexpected token in global space."
+and parse_fn id ts = parse_fn_list id [] ts
+and parse_fn_list id (l: (ty * string) list) = function
+| RPAREN :: SEMICOLON :: ts -> (
+    (GlobalDecl (id, FuncTy (Void, List.map (fun (t, _) -> t) l)), ts)
+  )
+| RPAREN :: COLON :: ts -> (
+  let (t, ts) = parse_ty ts in
+  match ts with
+  | SEMICOLON :: ts -> (
+    (GlobalDecl (id, FuncTy (t, List.map (fun (t, _) -> t) l)), ts)
+  )
+  | LBRACE :: ts -> (
+    let (s, ts) = parse_block [] ts in
+    (FuncDef (t, id, l, s), ts)
+  )
+  | _ -> failwith "Expected `{` or `;` after function declaration."
+)
+| RPAREN :: LBRACE :: ts -> (
+  let (s, ts) = parse_block [] ts in
+    (FuncDef (Void, id, l, s), ts)
+)
+| IDENTIFIER i :: COLON :: ts -> (
+  let (t, ts) = parse_ty ts in
+  match ts with
+  | COMMA :: ts -> parse_fn_list id (l @ [(t, i)]) ts
+  | RPAREN :: _ -> parse_fn_list id (l @ [(t, i)]) ts
+  | _ -> failwith "Expected `,` or `)`."
+)
+| ts -> (
+  let (t, ts) = parse_ty ts in
+  match ts with
+  | COMMA :: ts -> parse_fn_decl_list id ((List.map (fun (t, _) -> t) l) @ [t]) ts
+  | RPAREN :: _ -> parse_fn_decl_list id ((List.map (fun (t, _) -> t) l) @ [t]) ts
+  | _ -> failwith "Expected `,` or `)`."
+)
+and parse_fn_decl_list id l = function
+| RPAREN :: SEMICOLON :: ts -> (
+  (GlobalDecl (id, FuncTy (Void, l)), ts)
+)
+| RPAREN :: COLON :: ts -> (
+  let (t, ts) = parse_ty ts in
+  match ts with
+  | SEMICOLON :: ts -> (
+    (GlobalDecl (id, FuncTy (t, l)), ts)
+  )
+  | _ -> failwith "Expected `;` after function declaration."
+)
+| IDENTIFIER _ :: COLON :: ts -> parse_fn_decl_list id l ts
+| ts -> (
+  let (t, ts) = parse_ty ts in
+  match ts with
+  | COMMA :: ts -> parse_fn_decl_list id (l @ [t]) ts
+  | RPAREN :: _ -> parse_fn_decl_list id (l @ [t]) ts
+  | _ -> failwith "Expected `,` or `)`."
+);;
+
+type program = globalDecl list;;
+
+let parse (ts: token list) : program =
+  let rec parser l = function
+  | [] -> l
+  | ts -> (let (g, ts) = parse_global_decl ts in
+          parser (l @ [g]) ts)
+in parser [] ts;;
+
