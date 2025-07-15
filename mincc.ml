@@ -464,7 +464,7 @@ let lookup_ty id tb = match lookup id tb with (_, t, _) -> t;;
 let lookup_return_ty tb = lookup_ty "return" tb;;
 
 let rec lookup_stack off = function
-| [] -> failwith "No such special entry"
+| [] -> failwith ("No such special entry for " ^ (string_of_int off))
 | (id, _, off') :: _ when off = off' -> id
 | _ :: tb -> lookup_stack off tb;;
 
@@ -479,6 +479,12 @@ let pushTable isGlobal (s: string) (t: ty) (tb: symbolTable) : symbolTable =
   else (s, t, stackOff tb + stackAlign tb) :: tb;;
 
 let pushStack = pushTable false;;
+
+let rec insert_global (st: symbolTable) (id, t) =
+  match st with
+  | [] -> [(id, t, -1)]
+  | (id', t', x) :: _ when id = id' -> if t = t' then st else failwith "Declaration with other type."
+  | s :: st -> s :: insert_global st (id, t);;
 
 (* Annotated AST *)
 
@@ -650,3 +656,25 @@ let rec check_semantic_stmt (st: symbolTable) = function
   SLoop (s, blabel, elabel) :: check_semantic_stmt st sl
 )
 and check_semantic_decl st se t id sl = SDecl (id, t, se) :: check_semantic_stmt (st |> pushStack id t) sl;;
+
+let rec check_semantic_gdecl (st: symbolTable) = function
+| [] -> []
+| GlobalDecl (id, t) :: sl -> SGlobalDecl (id, t) :: check_semantic_gdecl (insert_global st (id, t)) sl
+| FuncDef (rty, id, args, s) :: sl -> (
+  let t = FuncTy (rty, List.map (fun x -> fst x) args) in
+  let st = insert_global st (id, t) in
+  let st' = ("return", rty, 0) :: st in
+  let st' = pushArgs st' args in
+  let s = [s] |> check_semantic_stmt st' |> List.hd in
+  (SFuncDef (rty, id, args, s) :: check_semantic_gdecl st sl)
+)
+and pushArgs st = function
+| [] -> st
+| (t, id) :: args -> pushArgs (pushStack id t st) args;;
+
+type sprogram = sglobalDecl list;;
+
+let semantic_check (off: int) : program -> sprogram =
+  let st = [(string_of_int off, Void, -4)] in
+  check_semantic_gdecl st;;
+
