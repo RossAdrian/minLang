@@ -678,3 +678,81 @@ let semantic_check (off: int) : program -> sprogram =
   let st = [(string_of_int off, Void, -4)] in
   check_semantic_gdecl st;;
 
+(* ---- Code Generation ---- *)
+
+type reg =
+| SP
+| FP
+| T0
+| T1
+| T2
+| T3
+| T4
+| T5
+| T6
+| A0
+| A1
+| A2
+| A3
+| A4
+| A5
+| A6;;
+
+type reg_alloc = reg list;;
+
+type ir =
+| Label of string * bool
+| Asciiz of string
+| Word of int
+
+| IAdd of reg * reg * reg * reg_alloc
+| ILi of reg * int * reg_alloc
+| ILa of reg * string * reg_alloc
+| IMul of reg * reg * reg * reg_alloc
+| IDiv of reg * reg * reg * reg_alloc
+| ISub of reg * reg * reg * reg_alloc
+| IMod of reg * reg * reg * reg_alloc
+| IEquals of reg * reg * reg * reg_alloc
+| INotEquals of reg * reg * reg * reg_alloc
+| ILower of reg * reg * reg * reg_alloc
+| IGreater of reg * reg * reg * reg_alloc
+| ILowerEquals of reg * reg * reg * reg_alloc
+| IGreaterEquals of reg * reg * reg * reg_alloc
+| IMov of reg * reg * reg_alloc
+| ICall of string * reg_alloc
+| IReturn of reg option
+| IEnter
+| INot of reg * reg
+| ILoadInt of reg * int * reg
+| ILoadByte of reg * int * reg
+| IStoreInt of reg * int * reg
+| IStoreChar of reg * int * reg
+;;
+
+type codegenCtx = reg_alloc * int;;
+
+let data_section: ir list ref = ref [];;
+
+let alloc_reg: reg_alloc -> (reg * reg_alloc) = function
+| [] -> failwith "Codegen out of registers."
+| r :: all -> (r, all);;
+
+let rec codegen_expr ((alloc, align): codegenCtx): sexpr -> ir list * codegenCtx = function
+| SCInt i -> (
+  let (r, ctxx) = alloc_reg alloc in
+  ([ILi (r, i, ctxx)], (alloc, align))
+)
+| SCChar i -> (
+  let (r, ctxx) = alloc_reg alloc in
+  ([ILi (r, int_of_char i, ctxx)], (alloc, align))
+)
+| SCString s -> (
+  let label = next_label () in
+  let _ = (
+    let data = !data_section in
+    let data = (Label (label, false) :: Asciiz s :: data) in
+    data_section := data
+  ) in let (r, ctxx) = alloc_reg alloc in
+  ([ILa (r, s, ctxx)], (alloc, align))
+)
+| _ -> failwith "Not yet implemented.";;
