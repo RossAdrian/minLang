@@ -442,21 +442,17 @@ Special symbol table entries:
 "return" * ty * 0: The return type.
 "label" * Void * -2: The break label.
 "label" * Void * -3: The continue label.
+"offsetnum" * Void * -4: The stack alignment
 *)
 
 type symbol = string * ty * int;;
 type symbolTable = symbol list;;
 
-let stackOff (s: symbolTable): int =
+let rec stackOff (s: symbolTable): int =
   match s with
-  | (_, _, off) :: _ -> if off <> -1 then off else 0
+  | (_, _, off) :: _ when off >= 0 -> off
+  | _ :: s -> stackOff s
   | _ -> 0;;
-
-let pushTable isGlobal (s: string) (t: ty) (tb: symbolTable) : symbolTable =
-  if isGlobal then (s, t, -1) :: tb
-  else (s, t, stackOff tb) :: tb;;
-
-let pushStack = pushTable false;;
 
 let rec lookup id = function
 | [] -> failwith ("Symbol " ^ id ^ " undefined.")
@@ -474,6 +470,15 @@ let rec lookup_stack off = function
 
 let lookup_continue tb = lookup_stack (-2) tb;;
 let lookup_break tb = lookup_stack (-3) tb;;
+
+
+let stackAlign (s: symbolTable): int = lookup_stack (-4) s |> int_of_string;;
+
+let pushTable isGlobal (s: string) (t: ty) (tb: symbolTable) : symbolTable =
+  if isGlobal then (s, t, -1) :: tb
+  else (s, t, stackOff tb + stackAlign tb) :: tb;;
+
+let pushStack = pushTable false;;
 
 (* Annotated AST *)
 
@@ -496,13 +501,29 @@ type sstatement =
 | SWhile of sexpr * sstatement * string * string
 | SIf of sexpr * sstatement
 | SIfElse of sexpr * sstatement * sstatement
-| SLoop of sstatement;;
+| SLoop of sstatement * string * string;;
 
 type sglobalDecl =
 | SGlobalDecl of string * ty
 | SFuncDef of ty * string * (ty * string) list * sstatement;;
 
 (* Analysis *)
+
+let isScalarTy t = match t with
+| Int
+| Char
+| Ptr _ -> true
+| _ -> false;;
+
+let next_number =
+  let counter = ref 0 in
+  fun () ->
+    counter := !counter + 1;
+    !counter
+;;
+
+let next_label () =
+  () |> next_number |> string_of_int |> (^) ".L";;
 
 let resolve_ty ty = match ty with Char -> Int | _ -> ty;;
 
@@ -562,3 +583,70 @@ and check_param_list st = function
 | [], _ -> failwith "Too few arguments in function call."
 | _ -> failwith "Too many arguments in function call.";;
 
+let rec check_semantic_stmt (st: symbolTable) = function
+| [] -> []
+| Break :: sl -> (SBreak (lookup_break st)) :: check_semantic_stmt st sl
+| Continue :: sl -> (SContinue (lookup_continue st)) :: check_semantic_stmt st sl
+| Expr e :: sl -> (SExpr (e |> check_semantic_expr st |> fst)) :: check_semantic_stmt st sl
+| Decl (id, t, e) :: sl -> (
+  let (se, t') = check_semantic_expr st e in
+  match resolve_ty t, resolve_ty t' with
+  | x, y when x = y -> check_semantic_decl st (Some se) t id sl
+  | Ptr _, Ptr Void -> check_semantic_decl st (Some se) t id sl
+  | Ptr Void, Ptr _ -> check_semantic_decl st (Some se) t id sl
+  | _ -> failwith "Typing error in declaration."
+)
+| DeclInfer (id, e) :: sl -> (
+  let (se, t') = check_semantic_expr st e in
+  check_semantic_decl st (Some se) t' id sl
+)
+| DeclUninit (id, t) :: sl -> check_semantic_decl st None t id sl
+| Return (Some e) :: sl -> (
+  let (se, t') = check_semantic_expr st e in
+  match resolve_ty t', st |> lookup_return_ty |> resolve_ty with
+  | x, y when x = y -> SReturn (Some se) :: check_semantic_stmt st sl
+  | Ptr _, Ptr Void -> SReturn (Some se) :: check_semantic_stmt st sl
+  | Ptr Void, Ptr _ -> SReturn (Some se) :: check_semantic_stmt st sl
+  | _ -> failwith "Typing error in return statement."
+)
+| Return (None) :: sl -> (
+  if st |> lookup_return_ty |> (=) Void then SReturn (None) :: check_semantic_stmt st sl
+  else failwith "Expected expression for return statement. Return type is not Void."
+)
+| Block (sl') :: sl -> (
+  let off = stackOff st in
+  SBlock (sl' |> check_semantic_stmt st, off) :: check_semantic_stmt st sl
+)
+| While (e, s) :: sl -> (
+  let blabel = next_label () in
+  let elabel = next_label () in
+  let st' = ((blabel, Void, (-3)) :: ((elabel, Void, (-2)) :: st)) in
+  let (se, t) = check_semantic_expr st e in
+  if not (isScalarTy t) then failwith "Expected pointer or int in while condition"
+  else (
+    let s = [s] |> check_semantic_stmt st' |> List.hd in
+    SWhile (se, s, blabel, elabel) :: check_semantic_stmt st sl
+  )
+)
+| If (e, s) :: sl -> (
+  let (se, t) = check_semantic_expr st e in
+  if not (isScalarTy t) then failwith "Expected pointer or int in if condition"
+  else (
+    SIf (se, [s] |> check_semantic_stmt st |> List.hd) :: check_semantic_stmt st sl
+  )
+)
+| IfElse (e, s, selse) :: sl -> (
+  let (se, t) = check_semantic_expr st e in
+  if not (isScalarTy t) then failwith "Expected pointer or int in if condition"
+  else (
+    SIfElse (se, [s] |> check_semantic_stmt st |> List.hd, [selse] |> check_semantic_stmt st |> List.hd) :: check_semantic_stmt st sl
+  )
+)
+| Loop (s) :: sl -> (
+  let blabel = next_label () in
+  let elabel = next_label () in
+  let st' = ((blabel, Void, (-3)) :: ((elabel, Void, (-2)) :: st)) in
+  let s = [s] |> check_semantic_stmt st' |> List.hd in
+  SLoop (s, blabel, elabel) :: check_semantic_stmt st sl
+)
+and check_semantic_decl st se t id sl = SDecl (id, t, se) :: check_semantic_stmt (st |> pushStack id t) sl;;
