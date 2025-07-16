@@ -698,6 +698,24 @@ type reg =
 | A5
 | A6;;
 
+let string_of_reg = function
+| SP -> "sp"
+| FP -> "fp"
+| T0 -> "t0"
+| T1 -> "t1"
+| T2 -> "t2"
+| T3 -> "t3"
+| T4 -> "t4"
+| T5 -> "t5"
+| T6 -> "t6"
+| A0 -> "a0"
+| A1 -> "a1"
+| A2 -> "a2"
+| A3 -> "a3"
+| A4 -> "a4"
+| A5 -> "a5"
+| A6 -> "a6";;
+
 type reg_alloc = reg list;;
 
 type ir =
@@ -729,6 +747,42 @@ type ir =
 | IStoreChar of reg * int * reg
 ;;
 
+let string_of_ir = function
+| Label (s, glob) -> (
+  if glob then ".global " ^ s ^ "\n"
+  else "\n"
+) ^ s ^ ":"
+| Asciiz s -> ".asciiz " ^ s
+| Word i -> ".word " ^ string_of_int i
+| IAdd (out, lhs, rhs, _) -> (
+  "    add           " ^ string_of_reg out ^ " " ^ string_of_reg lhs ^ " " ^ string_of_reg rhs
+)
+| ILi (r, i, _) -> "    li            " ^ string_of_reg r ^ " " ^ string_of_int i
+| ILa (r, s, _) -> "    la            " ^ string_of_reg r ^ " " ^ s
+| IMul (out, lhs, rhs, _) -> "    mul           " ^ string_of_reg out ^ " " ^ string_of_reg lhs ^ " " ^ string_of_reg rhs
+| IDiv (out, lhs, rhs, _) -> "    div           " ^ string_of_reg out ^ " " ^ string_of_reg lhs ^ " " ^ string_of_reg rhs
+| ISub (out, lhs, rhs, _) -> "    sub           " ^ string_of_reg out ^ " " ^ string_of_reg lhs ^ " " ^ string_of_reg rhs
+| IMod (out, lhs, rhs, _) -> "    mod           " ^ string_of_reg out ^ " " ^ string_of_reg lhs ^ " " ^ string_of_reg rhs
+| IEquals (out, lhs, rhs, _) -> "    equals        " ^ string_of_reg out ^ " " ^ string_of_reg lhs ^ " " ^ string_of_reg rhs
+| INotEquals (out, lhs, rhs, _) -> "    notequals     " ^ string_of_reg out ^ " " ^ string_of_reg lhs ^ " " ^ string_of_reg rhs
+| ILower (out, lhs, rhs, _) -> "    lower         " ^ string_of_reg out ^ " " ^ string_of_reg lhs ^ " " ^ string_of_reg rhs
+| IGreater (out, lhs, rhs, _) -> "    greater       " ^ string_of_reg out ^ " " ^ string_of_reg lhs ^ " " ^ string_of_reg rhs
+| ILowerEquals (out, lhs, rhs, _) -> "    lowerequals   " ^ string_of_reg out ^ " " ^ string_of_reg lhs ^ " " ^ string_of_reg rhs
+| IGreaterEquals (out, lhs, rhs, _) -> "    greaterequals " ^ string_of_reg out ^ " " ^ string_of_reg lhs ^ " " ^ string_of_reg rhs
+| IMov (out, src, _) -> "    mov           " ^ string_of_reg out ^ " " ^ string_of_reg src
+| ICall (id, _) -> "    call          " ^ id
+| IReturn (Some r) -> "    ret           " ^ string_of_reg r
+| IReturn None -> "    ret"
+| IEnter -> "    enter"
+| ILoadInt (r, i, r2) -> "    lw            " ^ string_of_reg r ^ " " ^ string_of_int i ^ "(" ^ string_of_reg r2 ^ ")"
+| ILoadByte (r, i, r2) -> "    lb            " ^ string_of_reg r ^ " " ^ string_of_int i ^ "(" ^ string_of_reg r2 ^ ")"
+| IStoreInt (r, i, r2) -> "    sw            " ^ string_of_reg r ^ " " ^ string_of_int i ^ "(" ^ string_of_reg r2 ^ ")"
+| IStoreChar (r, i, r2) -> "    sb            " ^ string_of_reg r ^ " " ^ string_of_int i ^ "(" ^ string_of_reg r2 ^ ")"
+| INot (r, r2) -> "    not           " ^ string_of_reg r ^ " " ^ string_of_reg r2
+;;
+
+let string_of_ir_list i = "\n" ^ List.fold_right (fun a b -> string_of_ir a ^ "\n" ^ b) i "";;
+
 type codegenCtx = reg_alloc * int;;
 
 let data_section: ir list ref = ref [];;
@@ -737,7 +791,7 @@ let alloc_reg: reg_alloc -> (reg * reg_alloc) = function
 | [] -> failwith "Codegen out of registers."
 | r :: all -> (r, all);;
 
-let rec codegen_expr ((alloc, align): codegenCtx): sexpr -> ir list * codegenCtx * reg = function
+let rec codegen_expr ((alloc, align): codegenCtx) (se: sexpr): ir list * codegenCtx * reg = match se with
 | SCInt i -> (
   let (r, ctxx) = alloc_reg alloc in
   ([ILi (r, i, ctxx)], (ctxx, align), r)
@@ -755,6 +809,14 @@ let rec codegen_expr ((alloc, align): codegenCtx): sexpr -> ir list * codegenCtx
   ) in let (r, ctxx) = alloc_reg alloc in
   ([ILa (r, s, ctxx)], (ctxx, align), r)
 )
+| SIdent (id, Char, _) -> (
+  let (i, ctxx, r) = codegen_expr_leval (alloc, align) se in
+  (i @ [ILoadByte (r, 0, r)], ctxx, r)
+)
+| SIdent (id, _, _) -> (
+  let (i, ctxx, r) = codegen_expr_leval (alloc, align) se in
+  (i @ [ILoadInt (r, 0, r)], ctxx, r)
+)
 | SUnary (Addr, e, _) -> (
   codegen_expr_leval (alloc, align) e
 )
@@ -770,7 +832,21 @@ let rec codegen_expr ((alloc, align): codegenCtx): sexpr -> ir list * codegenCtx
   let (i, ctxx, r) = e |> codegen_expr (alloc, align) in
   (i @ [ILoadInt (r, 0, r)], ctxx, r)
 )
-| _ -> failwith "Not yet implemented."
+| SBinary (Assign, lhs, rhs, Char) -> (
+  let (ils, ctxx, rl) = codegen_expr_leval (alloc, align) lhs in
+  let (irs, ctxx, rr) = codegen_expr ctxx rhs in
+  let (outp, ctxx) = alloc_reg alloc in
+  let i = ils @ irs @ [IStoreChar (rr, 0, rl); IMov (outp, rr, ctxx)] in
+  (i, (ctxx, align), outp)
+)
+| SBinary (Assign, lhs, rhs, _) -> (
+  let (ils, ctxx, rl) = codegen_expr_leval (alloc, align) lhs in
+  let (irs, ctxx, rr) = codegen_expr ctxx rhs in
+  let (outp, ctxx) = alloc_reg alloc in
+  let i = ils @ irs @ [IStoreInt (rr, 0, rl); IMov (outp, rr, ctxx)] in
+  (i, (ctxx, align), outp)
+)
+| _ -> failwith "Not yet implemented expression."
 and codegen_expr_leval ((alloc, align): codegenCtx): sexpr -> ir list * codegenCtx * reg = function
 | SUnary (Indir, e, _) -> codegen_expr (alloc, align) e
 | SIdent (id, t, -1) -> (
@@ -798,4 +874,8 @@ and codegen_create_binop outp lhs rhs ctx t = function
   | Char -> [IStoreChar (rhs, 0, lhs); IMov (outp, rhs, ctx)]
   | _ -> [IStoreInt (rhs, 0, lhs); IMov (outp, rhs, ctx)]
 );;
+
+(* Testing: *)
+"*x = y" |> lex |> parse_expr |> fst |> check_semantic_expr [("8", Void, -4); ("x", Ptr Int, 8); ("y", Int, 16)] |> fst |> codegen_expr ([T0;T1;T2], 8) |>
+(fun (a, _, _) -> a) |> string_of_ir_list |> print_endline;;
 
