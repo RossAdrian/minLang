@@ -755,4 +755,24 @@ let rec codegen_expr ((alloc, align): codegenCtx): sexpr -> ir list * codegenCtx
   ) in let (r, ctxx) = alloc_reg alloc in
   ([ILa (r, s, ctxx)], (alloc, align))
 )
-| _ -> failwith "Not yet implemented.";;
+| _ -> failwith "Not yet implemented."
+and codegen_expr_leval ((alloc, align): codegenCtx): sexpr -> ir list * codegenCtx = function
+| _ -> failwith "Not yet implemented!"
+and codegen_create_binop outp lhs rhs ctx t = function
+| Plus -> [IAdd (outp, lhs, rhs, ctx)]
+| Minus -> [ISub (outp, lhs, rhs, ctx)]
+| Mul -> [IMul (outp, lhs, rhs, ctx)]
+| Div -> [IDiv (outp, lhs, rhs, ctx)]
+| Mod -> [IMod (outp, lhs, rhs, ctx)]
+| Equals -> [IEquals (outp, lhs, rhs, ctx)]
+| NotEquals -> [INotEquals (outp, lhs, rhs, ctx)]
+| Lower -> [ILower (outp, lhs, rhs, ctx)]
+| LowerEquals -> [ILowerEquals (outp, lhs, rhs, ctx)]
+| Greater -> [IGreater (outp, lhs, rhs, ctx)]
+| GreaterEquals -> [IGreaterEquals (outp, lhs, rhs, ctx)]
+| Assign -> (
+  match t with
+  | Char -> [IStoreChar (rhs, 0, lhs); IMov (outp, rhs, ctx)]
+  | _ -> [IStoreInt (rhs, 0, lhs); IMov (outp, rhs, ctx)]
+);;
+
