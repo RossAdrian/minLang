@@ -493,7 +493,7 @@ type sexpr =
 | SCChar of char
 | SCString of string
 | SBinary of binop * sexpr * sexpr * ty
-| SUnary of uop * sexpr
+| SUnary of uop * sexpr * ty
 | SCall of string * sexpr list
 | SIdent of symbol;;
 
@@ -556,10 +556,10 @@ let rec check_semantic_expr (st: symbolTable) = function
 | Unary (o, e) -> (
   let (e, t) = check_semantic_expr st e in
   match o, t, e with
-  | Not, _, _ -> (SUnary (o, e), Int)
+  | Not, _, _ -> (SUnary (o, e, t), Int)
   | Addr, _, SIdent _
-  | Addr, _, SUnary (Indir, _) -> (SUnary (o, e), Ptr t)
-  | Indir, Ptr t, _ -> (SUnary (o, e), t)
+  | Addr, _, SUnary (Indir, _, _) -> (SUnary (o, e, t), Ptr t)
+  | Indir, Ptr t, _ -> (SUnary (o, e, t), t)
   | _ -> failwith "Illegal unary operation typing."
 )
 | Call (callee, el) -> (
@@ -737,14 +737,14 @@ let alloc_reg: reg_alloc -> (reg * reg_alloc) = function
 | [] -> failwith "Codegen out of registers."
 | r :: all -> (r, all);;
 
-let rec codegen_expr ((alloc, align): codegenCtx): sexpr -> ir list * codegenCtx = function
+let rec codegen_expr ((alloc, align): codegenCtx): sexpr -> ir list * codegenCtx * reg = function
 | SCInt i -> (
   let (r, ctxx) = alloc_reg alloc in
-  ([ILi (r, i, ctxx)], (alloc, align))
+  ([ILi (r, i, ctxx)], (ctxx, align), r)
 )
 | SCChar i -> (
   let (r, ctxx) = alloc_reg alloc in
-  ([ILi (r, int_of_char i, ctxx)], (alloc, align))
+  ([ILi (r, int_of_char i, ctxx)], (ctxx, align), r)
 )
 | SCString s -> (
   let label = next_label () in
@@ -753,11 +753,34 @@ let rec codegen_expr ((alloc, align): codegenCtx): sexpr -> ir list * codegenCtx
     let data = (Label (label, false) :: Asciiz s :: data) in
     data_section := data
   ) in let (r, ctxx) = alloc_reg alloc in
-  ([ILa (r, s, ctxx)], (alloc, align))
+  ([ILa (r, s, ctxx)], (ctxx, align), r)
+)
+| SUnary (Addr, e, _) -> (
+  codegen_expr_leval (alloc, align) e
+)
+| SUnary (Not, e, _) -> (
+  let (i, ctxx, r) = e |> codegen_expr (alloc, align) in
+  (i @ [INot (r, r)], ctxx, r)
+)
+| SUnary (Indir, e, Char) -> (
+  let (i, ctxx, r) = e |> codegen_expr (alloc, align) in
+  (i @ [ILoadByte (r, 0, r)], ctxx, r)
+)
+| SUnary (Indir, e, _) -> (
+  let (i, ctxx, r) = e |> codegen_expr (alloc, align) in
+  (i @ [ILoadInt (r, 0, r)], ctxx, r)
 )
 | _ -> failwith "Not yet implemented."
-and codegen_expr_leval ((alloc, align): codegenCtx): sexpr -> ir list * codegenCtx = function
-| _ -> failwith "Not yet implemented!"
+and codegen_expr_leval ((alloc, align): codegenCtx): sexpr -> ir list * codegenCtx * reg = function
+| SUnary (Indir, e, _) -> codegen_expr (alloc, align) e
+| SIdent (id, t, -1) -> (
+  let (r, ctxx) = alloc_reg alloc in ([ILa (r, id, ctxx)], (ctxx, align), r)
+)
+| SIdent (id, t, off) -> (
+  let (r, ctxx) = alloc_reg alloc in
+  ([ILi (r, off, ctxx); ISub (r, FP, r, ctxx)], (ctxx, align), r)
+)
+| _ -> failwith "Not supported LEval!"
 and codegen_create_binop outp lhs rhs ctx t = function
 | Plus -> [IAdd (outp, lhs, rhs, ctx)]
 | Minus -> [ISub (outp, lhs, rhs, ctx)]
