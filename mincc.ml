@@ -839,7 +839,18 @@ let rec codegen_expr ((alloc, align): codegenCtx) (se: sexpr): ir list * codegen
   let i = ils @ irs @ (codegen_create_binop outp rl rr ctxx t op) in
   (i, (ctxx, align), outp)
 )
-| _ -> failwith "Not yet implemented expression."
+| SCall (f, el) -> (
+  let rec codegen_binary = function
+  | (_, []) -> []
+  | (rx :: rl, e :: el) -> (
+    let (i, _, r) = codegen_expr (alloc, align) e in
+    i @ [IMov (rx, r, alloc)] @ codegen_binary (rl, el)
+  )
+  | _ -> failwith "Out of parameters." in
+  let i = codegen_binary ([A0; A1; A2; A3; A4; A5; A6], el) in
+  let (rout, alloc) = alloc_reg alloc in
+  (i @ (push_regs alloc align) @ [ICall (f, alloc)] @ (pop_regs alloc align) @ [IMov (rout, A0, alloc)], (alloc, align), rout)
+)
 and codegen_expr_leval ((alloc, align): codegenCtx): sexpr -> ir list * codegenCtx * reg = function
 | SUnary (Indir, e, _) -> codegen_expr (alloc, align) e
 | SIdent (id, t, -1) -> (
@@ -866,9 +877,44 @@ and codegen_create_binop outp lhs rhs ctx t = function
   match t with
   | Char -> [IStoreChar (rhs, 0, lhs); IMov (outp, rhs, ctx)]
   | _ -> [IStoreInt (rhs, 0, lhs); IMov (outp, rhs, ctx)]
-);;
+)
+and int_of_reg = function
+| T0 :: _ -> 0
+| T1 :: _ -> 1
+| T2 :: _ -> 2
+| T3 :: _ -> 3
+| T4 :: _ -> 4
+| T5 :: _ -> 5
+| T6 :: _ -> 6
+| _ -> 7
+and reg_of_int = function
+| 0 -> T0
+| 1 -> T1
+| 2 -> T2
+| 3 -> T3
+| 4 -> T4
+| 5 -> T5
+| _ -> T6
+and push_regs alloc align =
+  let rxx = List.hd alloc in
+  let i = int_of_reg alloc in
+  let rec create_push i =
+    if i <= 0 then []
+    else [ILi (rxx, align, alloc); ISub (SP, SP, rxx, List.tl alloc); IStoreInt (reg_of_int (i-1), 0, SP)]
+    @ create_push (i-1)
+  in create_push i
+and pop_regs alloc align =
+  let rxx = List.hd alloc in
+  let i = int_of_reg alloc in
+  let rec create_pop i =
+    if i <= 0 then []
+    else create_pop (i-1) @ [ILoadInt (reg_of_int (i-1), 0, SP); ILi (rxx, align, alloc); IAdd (SP, SP, rxx, List.tl alloc)]
+  in create_pop i
+;;
 
 (* Testing: *)
-"2 + ((*x >= y) * 3)" |> lex |> parse_expr |> fst |> check_semantic_expr [("8", Void, -4); ("x", Ptr Int, 8); ("y", Int, 16)] |> fst |> codegen_expr ([T0;T1;T2], 8) |>
-(fun (a, _, _) -> a) |> string_of_ir_list |> print_endline;;
+"2 + ((*x >= y) * f(3))" |> lex |> parse_expr |> fst |> check_semantic_expr
+[("8", Void, -4); ("f", FuncTy (Int, [Int]), -1); ("x", Ptr Int, 8); ("y", Int, 16)]
+|> fst |> codegen_expr ([T0;T1;T2; T3; T4], 8) |> (fun (a, _, _) -> a)
+|> string_of_ir_list |> print_endline;;
 
