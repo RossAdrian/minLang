@@ -846,6 +846,13 @@ let rec codegen_expr ((alloc, align): codegenCtx) (se: sexpr): ir list * codegen
   let i = ils @ irs @ [IStoreInt (rr, 0, rl); IMov (outp, rr, ctxx)] in
   (i, (ctxx, align), outp)
 )
+| SBinary (op, lhs, rhs, _) -> (
+  let (ils, ctxx, rl) = codegen_expr (alloc, align) lhs in
+  let (irs, ctxx, rr) = codegen_expr (ctxx) rhs in
+  let (outp, ctxx) = alloc_reg alloc in
+  let i = ils @ irs @ [create_binary_instruction outp rl rr ctxx op] in
+  (i, (ctxx, align), outp)
+)
 | _ -> failwith "Not yet implemented expression."
 and codegen_expr_leval ((alloc, align): codegenCtx): sexpr -> ir list * codegenCtx * reg = function
 | SUnary (Indir, e, _) -> codegen_expr (alloc, align) e
@@ -873,7 +880,20 @@ and codegen_create_binop outp lhs rhs ctx t = function
   match t with
   | Char -> [IStoreChar (rhs, 0, lhs); IMov (outp, rhs, ctx)]
   | _ -> [IStoreInt (rhs, 0, lhs); IMov (outp, rhs, ctx)]
-);;
+)
+and create_binary_instruction out lhs rhs ctx = function
+| Plus -> IAdd (out, lhs, rhs, ctx)
+| Minus -> ISub (out, lhs, rhs, ctx)
+| Mul -> IMul (out, lhs, rhs, ctx)
+| Div -> IDiv (out, lhs, rhs, ctx)
+| Lower -> ILower (out, lhs, rhs, ctx)
+| Greater -> IGreater (out, lhs, rhs, ctx)
+| LowerEquals -> ILowerEquals (out, lhs, rhs, ctx)
+| GreaterEquals -> IGreaterEquals (out, lhs, rhs, ctx)
+| Mod -> IMod (out, lhs, rhs, ctx)
+| Equals -> IEquals (out, lhs, rhs, ctx)
+| NotEquals -> INotEquals (out, lhs, rhs, ctx)
+| _ -> failwith "Unsupported.";;
 
 (* Testing: *)
 "*x = y" |> lex |> parse_expr |> fst |> check_semantic_expr [("8", Void, -4); ("x", Ptr Int, 8); ("y", Int, 16)] |> fst |> codegen_expr ([T0;T1;T2], 8) |>
