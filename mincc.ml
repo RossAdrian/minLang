@@ -1046,7 +1046,7 @@ let translate_riscv_single: ir -> string = function
 | ISub (out, r1, r2, _) ->  "        sub     " ^ string_of_reg out ^ string_of_reg r1 ^ " " ^ string_of_reg r2
 | IMul (out, r1, r2, _) ->  "        mul     " ^ string_of_reg out ^ string_of_reg r1 ^ " " ^ string_of_reg r2
 | IDiv (out, r1, r2, _) ->  "        div     " ^ string_of_reg out ^ string_of_reg r1 ^ " " ^ string_of_reg r2
-| _ -> failwith "Not yet supported!";;
+| _ -> "Not yet supported!";;
 
 let rec translate_riscv (acc: string): ir list -> string = function
 | [] -> acc
@@ -1066,6 +1066,13 @@ let backends: ccbackend list = [
     ("riscv", translate_riscv, 4, [T0; T1; T2; T3; T4; T5; T6])
 ];;
 
+let lookup_backend s =
+  let rec aux = function
+  | [] -> List.hd backends
+  | (n, f, a, r) :: _ when n = s -> (n, f, a, r)
+  | _ :: l -> aux l
+in aux backends;;
+
 (*
 The function to run the compiler.
 
@@ -1076,6 +1083,49 @@ All phases are passed:
 - IR Code Generation (IR = Intermediate Representation)
 - Platform specific code generation
 *)
-let compile (src: string) ((_, translate, align, regs): ccbackend): string =
+let compile ((_, translate, align, regs): ccbackend) (src: string): string =
   src |> lex |> parse |> semantic_check align |> codegen (regs, align) |> translate "";;
+
+
+
+(* ---- The commandline frontend ---- *)
+
+let input_file = ref ""
+let output_file = ref ""
+let asm_dialect = ref "riscv"
+
+let speclist = [
+  ("-c", Arg.String (fun s -> input_file := s), "Input source file");
+  ("-o", Arg.String (fun s -> output_file := s), "Output assembler file");
+  ("-a", Arg.String (fun s -> asm_dialect := s), "Output assembler dialect");
+]
+
+let usage_msg = "Usage: mincc -c <input> -o <output> [-a <dialect>]"
+
+let () =
+  Arg.parse speclist (fun _ -> ()) usage_msg;
+
+  (* Read input file *)
+  let input_content =
+    if !input_file = "" then
+      failwith "No input file specified."
+    else
+      let ic = open_in !input_file in
+      let content = really_input_string ic (in_channel_length ic) in
+      close_in ic;
+      content
+  in
+
+  let outp = (
+    input_content |> compile (lookup_backend !asm_dialect)
+  ) in
+
+  (* Write to output file *)
+  if !output_file = "" then
+    failwith "No output file specified."
+  else
+    let oc = open_out !output_file in
+    output_string oc outp;
+    close_out oc
+
 
