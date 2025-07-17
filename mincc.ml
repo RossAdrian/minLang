@@ -1043,7 +1043,9 @@ let translate_riscv_single: ir -> string = function
 | INotEquals (out, r1, r2, _) -> "        xor     " ^ string_of_reg out ^ " " ^ string_of_reg r1 ^ " " ^ string_of_reg r1 ^ "\n" ^
                                                 "        snez    " ^ string_of_reg out ^ " " ^ string_of_reg out
 | IAdd (out, r1, r2, _) ->  "        add     " ^ string_of_reg out ^ string_of_reg r1 ^ " " ^ string_of_reg r2
-| ISub (out, r1, r2, _) ->  "        add     " ^ string_of_reg out ^ string_of_reg r1 ^ " " ^ string_of_reg r2
+| ISub (out, r1, r2, _) ->  "        sub     " ^ string_of_reg out ^ string_of_reg r1 ^ " " ^ string_of_reg r2
+| IMul (out, r1, r2, _) ->  "        mul     " ^ string_of_reg out ^ string_of_reg r1 ^ " " ^ string_of_reg r2
+| IDiv (out, r1, r2, _) ->  "        div     " ^ string_of_reg out ^ string_of_reg r1 ^ " " ^ string_of_reg r2
 | _ -> failwith "Not yet supported!";;
 
 let rec translate_riscv (acc: string): ir list -> string = function
