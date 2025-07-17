@@ -1050,7 +1050,7 @@ let translate_riscv_single: ir -> string = function
                   (match s with
                    | None -> ""
                    | Some r ->
-                  "        mv      a0 " ^ string_of_reg r
+                  "        mv      a0 " ^ string_of_reg r ^ "\n"
                   ) ^
                   "        addi    sp s0 0\n" ^
                   "        addi    s0 0(sp)\n" ^
