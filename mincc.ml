@@ -840,16 +840,17 @@ let rec codegen_expr ((alloc, align): codegenCtx) (se: sexpr): ir list * codegen
   (i, (ctxx1, align), outp)
 )
 | SCall (f, el) -> (
+  let all_regs = fill_regs alloc in
   let rec codegen_binary = function
   | (_, []) -> []
   | (rx :: rl, e :: el) -> (
-    let (i, _, r) = codegen_expr (alloc, align) e in
-    i @ [IMov (rx, r, alloc)] @ codegen_binary (rl, el)
+    let (i, _, r) = codegen_expr (all_regs, align) e in
+    i @ [IMov (rx, r, all_regs)] @ codegen_binary (rl, el)
   )
   | _ -> failwith "Out of parameters." in
   let i = codegen_binary ([A0; A1; A2; A3; A4; A5; A6], el) in
   let (rout, alloc) = alloc_reg alloc in
-  (i @ (push_regs alloc align) @ [ICall (f, alloc)] @ (pop_regs alloc align) @ [IMov (rout, A0, alloc)], (alloc, align), rout)
+  ((push_regs alloc align) @ i @ [ICall (f, alloc)] @ (pop_regs alloc align) @ [IMov (rout, A0, alloc)], (alloc, align), rout)
 )
 and codegen_expr_leval ((alloc, align): codegenCtx): sexpr -> ir list * codegenCtx * reg = function
 | SUnary (Indir, e, _) -> codegen_expr (alloc, align) e
@@ -922,10 +923,13 @@ and pop_regs alloc align =
     if i <= 0 then []
     else create_pop (i-1) @ [ILoadInt (reg_of_int (i-1), 0, SP); ILi (rxx, align, alloc); IAdd (SP, SP, rxx, List.tl alloc)]
   in create_pop i
-;;
+and fill_regs alloc =
+  let i = int_of_reg alloc in
+  if i <= 0 then alloc
+  else fill_regs (reg_of_int (i-1) :: alloc);;
 
 (* Testing: *)
-"36 + *(x + 3) * 3" |> lex |> parse_expr |> fst |> check_semantic_expr
+"x + f(y)" |> lex |> parse_expr |> fst |> check_semantic_expr
 [("8", Void, -4); ("f", FuncTy (Int, [Int]), -1); ("x", Ptr Int, 8); ("y", Int, 16)]
 |> fst |> codegen_expr ([T0;T1;T2; T3; T4], 8) |> (fun (a, _, _) -> a)
 |> string_of_ir_list |> print_endline;;
