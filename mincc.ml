@@ -723,6 +723,8 @@ type ir =
 | Asciiz of string
 | Word of int
 
+| IJmp of string
+| IJmpIf of reg * string
 | IAdd of reg * reg * reg * reg_alloc
 | ILi of reg * int * reg_alloc
 | ILa of reg * string * reg_alloc
@@ -754,6 +756,8 @@ let string_of_ir = function
 ) ^ s ^ ":"
 | Asciiz s -> ".asciiz " ^ s
 | Word i -> ".word " ^ string_of_int i
+| IJmp s -> "    jmp           " ^ s
+| IJmpIf (r, s) -> "    jmpif         " ^ string_of_reg r ^ " " ^ s
 | IAdd (out, lhs, rhs, _) -> (
   "    add           " ^ string_of_reg out ^ " " ^ string_of_reg lhs ^ " " ^ string_of_reg rhs
 )
@@ -928,9 +932,52 @@ and fill_regs alloc =
   if i <= 0 then alloc
   else fill_regs (reg_of_int (i-1) :: alloc);;
 
+let rec codegen_stmt ((alloc, align): codegenCtx) = function
+| [] -> []
+| SBreak (l) :: sl -> IJmp (l) :: codegen_stmt (alloc, align) sl
+| SContinue (l) :: sl -> IJmp (l) :: codegen_stmt (alloc, align) sl
+| SExpr (e) :: sl -> (match (codegen_expr (alloc, align) e) with (i, _, _) -> i) @ codegen_stmt (alloc, align) sl
+| SDecl (id, t, None) :: sl -> (
+  let (r, ctx) = alloc_reg alloc in
+  (ILi (r, align, ctx) :: ISub (SP, SP, r, ctx) :: codegen_stmt (alloc, align) sl)
+)
+| SDecl (id, t, Some e) :: sl -> (
+  let (r, ctx) = alloc_reg alloc in
+  (ILi (r, align, ctx) :: ISub (SP, SP, r, ctx) :: (
+    match codegen_expr (alloc, align) e with
+    | (i, _, r) -> i @ (match t with
+      | Char -> [IStoreChar (r, 0, SP)]
+      | _ -> [IStoreInt (r, 0, SP)]
+    )
+  ) @ codegen_stmt (alloc, align) sl)
+)
+| SReturn None :: sl -> IReturn None :: codegen_stmt (alloc, align) sl
+| SReturn (Some e) :: sl -> (
+  (match codegen_expr (alloc, align) e with
+  | (i, _, rx) -> i @ [IReturn (Some rx)] 
+  ) @ codegen_stmt (alloc, align) sl
+)
+| SBlock (sl', i) :: sl -> (
+  codegen_stmt (alloc, align) sl' @ (
+    let (r, ctx) = alloc_reg alloc in
+    [ILi (r, i, ctx) ;ISub (SP, FP, r, ctx)]
+  )
+)
+| SWhile (e, sl', bl, el) :: sl -> (
+  Label (bl, false) :: (
+    let (i, _, r) = codegen_expr (alloc, align) e in
+    i @ [INot (r, r); IJmpIf (r, el)]
+  ) @ codegen_stmt (alloc, align) [sl'] @ [IJmp bl;Label (el, false)]
+)
+| _ -> failwith "Not yet implemented."
+;;
+
 (* Testing: *)
 "x + f(y)" |> lex |> parse_expr |> fst |> check_semantic_expr
 [("8", Void, -4); ("f", FuncTy (Int, [Int]), -1); ("x", Ptr Int, 8); ("y", Int, 16)]
 |> fst |> codegen_expr ([T0;T1;T2; T3; T4], 8) |> (fun (a, _, _) -> a)
 |> string_of_ir_list |> print_endline;;
 
+"{let x = 0; while (x) {x = x - 1;}}" |> lex |> parse_stmt |> fst |> (fun x -> [x])
+|> check_semantic_stmt [("8", Void, -4)] |> codegen_stmt ([T0; T1; T2; T3; T4; T5], 8)
+|> string_of_ir_list |> prerr_endline;;
