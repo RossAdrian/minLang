@@ -1059,7 +1059,7 @@ let translate_riscv_single: ir -> string = function
                   "        lw      ra 4(sp)\n" ^
                   "        addi    sp sp 8\n" ^
                   "        jr      ra"
-| ILi (r, i, _) -> "        li " ^ string_of_reg r ^ " " ^ string_of_int i
+| ILi (r, i, _) -> "        li      " ^ string_of_reg r ^ " " ^ string_of_int i
 | ILa (r, id, _) -> "        la      " ^ string_of_reg r ^ " " ^ id
 | IMov (out, r1, _) -> "        mv      " ^ string_of_reg out ^ " " ^ string_of_reg r1
 | ICall (f, _) -> "        jal     " ^ f
@@ -1072,6 +1072,12 @@ let translate_riscv_single: ir -> string = function
 
 let rec translate_riscv (acc: string): ir list -> string = function
 | [] -> acc
+| ILi (r, x, _) :: IMov (rx, r', _) :: sl when r = r' ->
+  translate_riscv
+  (acc ^ "x       addi    " ^ string_of_reg rx ^ " x0 " ^ string_of_int x ^ "\n") sl
+| ILi (r, x, _) :: IReturn (Some r') :: sl when r = r' ->
+  translate_riscv
+  (acc ^ "x       addi    a0 x0 " ^ string_of_int x ^ "\n") (IReturn None :: sl)
 | x :: sl -> translate_riscv (acc ^  translate_riscv_single x ^ "\n") sl;;
 
 
