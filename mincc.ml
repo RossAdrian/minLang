@@ -1046,6 +1046,18 @@ let translate_riscv_single: ir -> string = function
 | ISub (out, r1, r2, _) ->  "        sub     " ^ string_of_reg out ^ string_of_reg r1 ^ " " ^ string_of_reg r2
 | IMul (out, r1, r2, _) ->  "        mul     " ^ string_of_reg out ^ string_of_reg r1 ^ " " ^ string_of_reg r2
 | IDiv (out, r1, r2, _) ->  "        div     " ^ string_of_reg out ^ string_of_reg r1 ^ " " ^ string_of_reg r2
+| IReturn s ->
+                  (match s with
+                   | None -> ""
+                   | Some r ->
+                  "        mv      a0 " ^ string_of_reg r
+                  ) ^
+                  "        addi    sp s0 0\n" ^
+                  "        addi    s0 0(sp)\n" ^
+                  "        lw      s0 0(sp)\n" ^
+                  "        lw      ra 4(sp)\n" ^
+                  "        addi    sp sp 8\n" ^
+                  "        jr      ra"
 | _ -> "Not yet supported!";;
 
 let rec translate_riscv (acc: string): ir list -> string = function
