@@ -722,6 +722,7 @@ type ir =
 | Label of string * bool
 | Asciiz of string
 | Word of int
+| Section of string
 
 | IJmp of string
 | IJmpIf of reg * string
@@ -750,6 +751,7 @@ type ir =
 ;;
 
 let string_of_ir = function
+| Section s -> ".section " ^ s
 | Label (s, glob) -> (
   if glob then ".global " ^ s ^ "\n"
   else "\n"
@@ -1015,11 +1017,35 @@ and reg_arg = function
 ;;
 
 let codegen (ctx: codegenCtx) (p: sprogram): ir list =
-  codegen_gdecl ctx p;;
+  Section "data" :: (let data = !data_section in let _ = data_section := [] in data) @
+  [Section "text"] @ codegen_gdecl ctx p;;
 
-(* Testing: *)
+(* ---- RISC-V (32bit) code generation ---- *)
 
-"let x: int; fn f(y: int, t: int): int {return x + y + t;} fn main(): int {x = 0; return f(3, 2);}" |> lex |> parse
-|> semantic_check 4 |> codegen ([T0; T1; T2; T3; T4; T5], 4) |> (@) (!data_section) |> string_of_ir_list |> print_endline;;
+let translate_riscv_single: ir -> string = function
+| Label (s, true) -> "        .globl " ^ s ^ "\n" ^ s ^ ":"
+| Label (s, false) -> s ^ ":"
+| Section s -> "        ." ^ s
+| Word i -> "        .word " ^ string_of_int i
+| Asciiz s -> "        .asciiz \"" ^ s ^ "\""
+| IEnter -> "        addi    sp sp -8\n" ^
+            "        sw      ra 4(sp)\n" ^
+            "        sw      s0 0(sp)\n" ^
+            "        addi    s0 sp 0"
+| IJmp s -> "        jmp     " ^ s
+| IJmpIf (r, s) -> "        bnz     " ^ string_of_reg r ^ " " ^ s
+| ILower (out, r1, r2, _) -> "        slt     " ^ string_of_reg out ^ " " ^ string_of_reg r1 ^ " " ^ string_of_reg r2
+| IGreater (out, r1, r2, _) -> "        sgt     " ^ string_of_reg out ^ " " ^ string_of_reg r1 ^ " " ^ string_of_reg r2
+| ILowerEquals (out, r2, r1, _) -> "        sgt     " ^ string_of_reg out ^ " " ^ string_of_reg r1 ^ " " ^ string_of_reg r2
+| IGreaterEquals (out, r2, r1, _) -> "        slt     " ^ string_of_reg out ^ " " ^ string_of_reg r1 ^ " " ^ string_of_reg r2
+| IEquals (out, r1, r2, _) -> "        xor     " ^ string_of_reg out ^ string_of_reg r1 ^ " " ^ string_of_reg r2 ^ "\n" ^
+                                             "        seqz    " ^ string_of_reg out ^ " " ^ string_of_reg out
+| INotEquals (out, r1, r2, _) -> "        xor     " ^ string_of_reg out ^ " " ^ string_of_reg r1 ^ " " ^ string_of_reg r1 ^ "\n" ^
+                                                "        snez    " ^ string_of_reg out ^ " " ^ string_of_reg out
+| IAdd (out, r1, r2, _) ->  "        add     " ^ string_of_reg out ^ string_of_reg r1 ^ " " ^ string_of_reg r2
+| ISub (out, r1, r2, _) ->  "        add     " ^ string_of_reg out ^ string_of_reg r1 ^ " " ^ string_of_reg r2
+| _ -> failwith "Not yet supported!";;
 
-
+let rec translate_riscv (acc: string): ir list -> string = function
+| [] -> acc
+| x :: sl -> translate_riscv (acc ^  translate_riscv_single x ^ "\n") sl;;
