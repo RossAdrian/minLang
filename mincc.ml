@@ -835,9 +835,9 @@ let rec codegen_expr ((alloc, align): codegenCtx) (se: sexpr): ir list * codegen
 | SBinary (op, lhs, rhs, t) -> (
   let (ils, ctxx, rl) = codegen_expr (alloc, align) lhs in
   let (irs, ctxx, rr) = codegen_expr (ctxx) rhs in
-  let (outp, ctxx) = alloc_reg alloc in
-  let i = ils @ irs @ (codegen_create_binop outp rl rr ctxx t op) in
-  (i, (ctxx, align), outp)
+  let (outp, ctxx1) = alloc_reg (alloc) in
+  let i = ils @ irs @ (codegen_create_binop outp rl rr (fst ctxx) t align op) in
+  (i, (ctxx1, align), outp)
 )
 | SCall (f, el) -> (
   let rec codegen_binary = function
@@ -861,9 +861,21 @@ and codegen_expr_leval ((alloc, align): codegenCtx): sexpr -> ir list * codegenC
   ([ILi (r, off, ctxx); ISub (r, FP, r, ctxx)], (ctxx, align), r)
 )
 | _ -> failwith "Not supported LEval!"
-and codegen_create_binop outp lhs rhs ctx t = function
-| Plus -> [IAdd (outp, lhs, rhs, ctx)]
-| Minus -> [ISub (outp, lhs, rhs, ctx)]
+and codegen_create_binop outp lhs rhs ctx t align = function
+| Plus -> (
+  let (ireg, alloc) = alloc_reg ctx in
+  match t with
+  | Ptr Int -> [ILi (ireg, 4, alloc); IMul (ireg, ireg, rhs, alloc); IAdd (outp, lhs, ireg, ctx)]
+  | Ptr (Ptr _) -> [ILi (ireg, align, alloc); IMul (ireg, ireg, rhs, alloc); IAdd (outp, lhs, ireg, ctx)]
+  | _ -> [IAdd (outp, lhs, rhs, ctx)]
+)
+| Minus -> (
+  let (ireg, alloc) = alloc_reg ctx in
+  match t with
+  | Ptr Int -> [ILi (ireg, 4, alloc); IMul (ireg, ireg, rhs, alloc); ISub (outp, lhs, ireg, ctx)]
+  | Ptr (Ptr _) -> [ILi (ireg, align, alloc); IMul (ireg, ireg, rhs, alloc); ISub (outp, lhs, ireg, ctx)]
+  | _ -> [ISub (outp, lhs, rhs, ctx)]
+)
 | Mul -> [IMul (outp, lhs, rhs, ctx)]
 | Div -> [IDiv (outp, lhs, rhs, ctx)]
 | Mod -> [IMod (outp, lhs, rhs, ctx)]
@@ -913,7 +925,7 @@ and pop_regs alloc align =
 ;;
 
 (* Testing: *)
-"2 + ((*x >= y) * f(3))" |> lex |> parse_expr |> fst |> check_semantic_expr
+"36 + *(x + 3) * 3" |> lex |> parse_expr |> fst |> check_semantic_expr
 [("8", Void, -4); ("f", FuncTy (Int, [Int]), -1); ("x", Ptr Int, 8); ("y", Int, 16)]
 |> fst |> codegen_expr ([T0;T1;T2; T3; T4], 8) |> (fun (a, _, _) -> a)
 |> string_of_ir_list |> print_endline;;
