@@ -962,14 +962,28 @@ let rec codegen_stmt ((alloc, align): codegenCtx) = function
     let (r, ctx) = alloc_reg alloc in
     [ILi (r, i, ctx) ;ISub (SP, FP, r, ctx)]
   )
-)
+) @ codegen_stmt (alloc, align) sl
 | SWhile (e, sl', bl, el) :: sl -> (
   Label (bl, false) :: (
     let (i, _, r) = codegen_expr (alloc, align) e in
     i @ [INot (r, r); IJmpIf (r, el)]
   ) @ codegen_stmt (alloc, align) [sl'] @ [IJmp bl;Label (el, false)]
-)
-| _ -> failwith "Not yet implemented."
+) @ codegen_stmt (alloc, align) sl
+| SIf (e, sl') :: sl -> (
+  let (i, _, r) = codegen_expr (alloc, align) e in
+  let l = next_label () in
+  i @ [INot (r, r); IJmpIf (r, l)] @ codegen_stmt (alloc, align) [sl'] @ [Label (l, false)]
+) @ codegen_stmt (alloc, align) sl
+| SIfElse (e, sl', sl'') :: sl -> (
+  let (i, _, r) = codegen_expr (alloc, align) e in
+  let lelse = next_label () in
+  let lend = next_label () in
+  i @ [INot (r, r); IJmpIf (r, lelse)] @ (codegen_stmt (alloc, align) [sl']) @
+  [IJmp lend; Label (lelse, false)] @ (codegen_stmt (alloc, align) [sl'']) @ [Label (lend, false)]
+) @ codegen_stmt (alloc, align) sl
+| SLoop (sl', lbegin, lend) :: sl -> (
+  Label (lbegin, false) :: codegen_stmt (alloc, align) [sl'] @ [IJmp (lbegin); Label (lend, false)]
+) @ codegen_stmt (alloc, align) sl
 ;;
 
 (* Testing: *)
@@ -978,6 +992,6 @@ let rec codegen_stmt ((alloc, align): codegenCtx) = function
 |> fst |> codegen_expr ([T0;T1;T2; T3; T4], 8) |> (fun (a, _, _) -> a)
 |> string_of_ir_list |> print_endline;;
 
-"{let x = 0; while (x) {x = x - 1;}}" |> lex |> parse_stmt |> fst |> (fun x -> [x])
+"if (1) {let x = 0; while (x) {x = x - 1;} x = 42;} else 2;" |> lex |> parse_stmt |> fst |> (fun x -> [x])
 |> check_semantic_stmt [("8", Void, -4)] |> codegen_stmt ([T0; T1; T2; T3; T4; T5], 8)
 |> string_of_ir_list |> prerr_endline;;
