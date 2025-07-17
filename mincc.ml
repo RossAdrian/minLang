@@ -986,12 +986,40 @@ let rec codegen_stmt ((alloc, align): codegenCtx) = function
 ) @ codegen_stmt (alloc, align) sl
 ;;
 
-(* Testing: *)
-"x + f(y)" |> lex |> parse_expr |> fst |> check_semantic_expr
-[("8", Void, -4); ("f", FuncTy (Int, [Int]), -1); ("x", Ptr Int, 8); ("y", Int, 16)]
-|> fst |> codegen_expr ([T0;T1;T2; T3; T4], 8) |> (fun (a, _, _) -> a)
-|> string_of_ir_list |> print_endline;;
+let rec codegen_gdecl ((alloc, align): codegenCtx) = function
+| [] -> []
+| SGlobalDecl (_, FuncTy (_, _)) :: sl -> codegen_gdecl (alloc, align) sl
+| SGlobalDecl (id, _) :: sl -> (
+  data_section := (
+    !data_section @ [Label (id, true); Word (0)]
+  )
+); codegen_gdecl (alloc, align) sl
+| SFuncDef (_, id, args, sl') :: sl -> (
+  Label (id, true) :: IEnter :: (
+    let (r, ctx) = alloc_reg alloc in
+    let rec push_args n l =
+      if n = l then []
+      else [ILi (r, align, ctx); ISub (SP, SP, r, ctx); IStoreInt (reg_arg n, 0, SP)] @ push_args (n+1) l
+    in push_args 0 (List.length args)
+  ) @ codegen_stmt (alloc, align) [sl'] @ [IReturn None] @ codegen_gdecl (alloc, align) sl
+)
+and reg_arg = function
+| 0 -> A0
+| 1 -> A1
+| 2 -> A2
+| 3 -> A3
+| 4 -> A4
+| 5 -> A5
+| 6 -> A6
+| _ -> A0
+;;
 
-"if (1) {let x = 0; while (x) {x = x - 1;} x = 42;} else 2;" |> lex |> parse_stmt |> fst |> (fun x -> [x])
-|> check_semantic_stmt [("8", Void, -4)] |> codegen_stmt ([T0; T1; T2; T3; T4; T5], 8)
-|> string_of_ir_list |> prerr_endline;;
+let codegen (ctx: codegenCtx) (p: sprogram): ir list =
+  codegen_gdecl ctx p;;
+
+(* Testing: *)
+
+"let x: int; fn f(y: int, t: int): int {return x + y + t;} fn main(): int {x = 0; return f(3, 2);}" |> lex |> parse
+|> semantic_check 4 |> codegen ([T0; T1; T2; T3; T4; T5], 4) |> (@) (!data_section) |> string_of_ir_list |> print_endline;;
+
+
