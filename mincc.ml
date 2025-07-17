@@ -1046,6 +1046,7 @@ let translate_riscv_single: ir -> string = function
 | ISub (out, r1, r2, _) ->  "        sub     " ^ string_of_reg out ^ string_of_reg r1 ^ " " ^ string_of_reg r2
 | IMul (out, r1, r2, _) ->  "        mul     " ^ string_of_reg out ^ string_of_reg r1 ^ " " ^ string_of_reg r2
 | IDiv (out, r1, r2, _) ->  "        div     " ^ string_of_reg out ^ string_of_reg r1 ^ " " ^ string_of_reg r2
+| IMod (out, r1, r2, _) ->  "        mod     " ^ string_of_reg out ^ string_of_reg r1 ^ " " ^ string_of_reg r2
 | IReturn s ->
                   (match s with
                    | None -> ""
@@ -1058,7 +1059,16 @@ let translate_riscv_single: ir -> string = function
                   "        lw      ra 4(sp)\n" ^
                   "        addi    sp sp 8\n" ^
                   "        jr      ra"
-| _ -> "Not yet supported!";;
+| ILi (r, i, _) -> "        li " ^ string_of_reg r ^ " " ^ string_of_int i
+| ILa (r, id, _) -> "        la      " ^ string_of_reg r ^ " " ^ id
+| IMov (out, r1, _) -> "        mv      " ^ string_of_reg out ^ " " ^ string_of_reg r1
+| ICall (f, _) -> "        jal     " ^ f
+| INot (out, r1) -> "        not     " ^ string_of_reg out ^ " " ^ string_of_reg r1
+| ILoadByte (r, off, d) -> "        lb      " ^ string_of_reg r ^ " " ^ string_of_int off ^ "(" ^ string_of_reg d ^ ")"
+| ILoadInt (r, off, d) -> "        lw      " ^ string_of_reg r ^ " " ^ string_of_int off ^ "(" ^ string_of_reg d ^ ")"
+| IStoreChar (r, off, d) -> "        sb      " ^ string_of_reg r ^ " " ^ string_of_int off ^ "(" ^ string_of_reg d ^ ")"
+| IStoreInt (r, off, d) -> "        sw      " ^ string_of_reg r ^ " " ^ string_of_int off ^ "(" ^ string_of_reg d ^ ")"
+;;
 
 let rec translate_riscv (acc: string): ir list -> string = function
 | [] -> acc
