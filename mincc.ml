@@ -1051,3 +1051,31 @@ let translate_riscv_single: ir -> string = function
 let rec translate_riscv (acc: string): ir list -> string = function
 | [] -> acc
 | x :: sl -> translate_riscv (acc ^  translate_riscv_single x ^ "\n") sl;;
+
+
+(* ---- Compiler Pipeline ---- *)
+
+(*
+A platform backend.
+
+Name * Codegen function * bit count * registers
+*)
+type ccbackend = string * (string -> ir list -> string) * int * reg list;;
+
+let backends: ccbackend list = [
+    ("riscv", translate_riscv, 4, [T0; T1; T2; T3; T4; T5; T6])
+];;
+
+(*
+The function to run the compiler.
+
+All phases are passed:
+- Lexer
+- Parser
+- Semantical Analysis
+- IR Code Generation (IR = Intermediate Representation)
+- Platform specific code generation
+*)
+let compile (src: string) ((_, translate, align, regs): ccbackend): string =
+  src |> lex |> parse |> semantic_check align |> codegen (regs, align) |> translate "";;
+

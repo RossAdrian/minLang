@@ -9,9 +9,9 @@ This repository includes **`mincc.ml`**, a single-file compiler that transforms 
 MinLang draws inspiration from C, while stripping the syntax down to the essentials. Here's what the language supports:
 
 - **Primitive types**: `int`, `char`, `ptr<T>` (pointers)
-- **Variable declarations** with mandatory initialization
+- **Variable declarations** with type inference (i.e. `let x = 0;`, optionally `let x: int = 0`)
 - **Functions** with typed parameters and return values
-- **Function calls**
+- **Function calls**: Nested function calls result in undefined behavior
 - **Basic expressions** and operators:
   - Binary: `+`, `-`, `*`, `/`, `%`, `==`, `!=`, `<`, `>`, `<=`, `>=`, `=`
   - Unary: `!`, `*` (dereference), `&` (address-of)
@@ -54,6 +54,7 @@ ocamlc -o mincc mincc.ml
 - `-c <input>`: MinLang source file to compile
 - `-o <output>`: Output assembly file
 - `-a <asm>`: Assembler dialect
+  - `riscv`: Generate *32bit RISC-V* code
 
 
 ## 📦 Output
