@@ -17,8 +17,8 @@ build:
 # Run all tests
 test: build download-venus
   mkdir -p build
-  for src in tests/*.my_lang; do \
-    base=$(basename $src .my_lang); \
+  for src in tests/*.minLang; do \
+    base=$(basename $src .minLang); \
     asm="build/$base.s"; \
     out="build/$base.out"; \
     echo "🛠️ Compiling $src..."; \
