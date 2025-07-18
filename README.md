@@ -56,7 +56,7 @@ ocamlc -o mincc mincc.ml
 - `-a <asm>`: Assembler dialect
   - `riscv`: Generate *32bit RISC-V* code
   - `ir`: Dump *IR (Intermediate Representation)* code
-
+  - `nasm`: Generate *64bit x64 NASM assembler* code
 
 ## 📦 Output
 
