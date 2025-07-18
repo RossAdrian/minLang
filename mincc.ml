@@ -787,7 +787,8 @@ let string_of_ir = function
 | INot (r, r2) -> "    not           " ^ string_of_reg r ^ " " ^ string_of_reg r2
 ;;
 
-let string_of_ir_list i = "\n" ^ List.fold_right (fun a b -> string_of_ir a ^ "\n" ^ b) i "";;
+let translate_ir acc i = "\n" ^ List.fold_right (fun a b -> string_of_ir a ^ "\n" ^ b) i acc;;
+let string_of_ir_list i = translate_ir "" i;;
 
 type codegenCtx = reg_alloc * int;;
 
@@ -1090,7 +1091,8 @@ Name * Codegen function * bit count * registers
 type ccbackend = string * (string -> ir list -> string) * int * reg list;;
 
 let backends: ccbackend list = [
-    ("riscv", translate_riscv, 4, [T0; T1; T2; T3; T4; T5; T6])
+    ("riscv", translate_riscv, 4, [T0; T1; T2; T3; T4; T5; T6]);
+    ("ir", translate_ir, 4, [T0; T1; T2; T3; T4; T5; T6])
 ];;
 
 let lookup_backend s =
