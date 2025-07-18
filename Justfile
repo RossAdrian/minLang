@@ -5,7 +5,7 @@ download-venus:
   mkdir -p build
   if [ ! -f build/venus.jar ]; then \
   echo "Downloading Venus..."; \
-    curl -L "https://github.com/ThaumicMekanism/venus/releases/latest/download/venus.jar" -o build/venus.jar; \
+    curl -L "https://github.com/ghishadow/venus-1/releases/latest/download/venus.jar" -o build/venus.jar; \
     echo "✅ Venus downloaded"; \
   fi
 
