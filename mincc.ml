@@ -1042,11 +1042,11 @@ let translate_riscv_single: ir -> string = function
                                              "        seqz    " ^ string_of_reg out ^ " " ^ string_of_reg out
 | INotEquals (out, r1, r2, _) -> "        xor     " ^ string_of_reg out ^ " " ^ string_of_reg r1 ^ " " ^ string_of_reg r1 ^ "\n" ^
                                                 "        snez    " ^ string_of_reg out ^ " " ^ string_of_reg out
-| IAdd (out, r1, r2, _) ->  "        add     " ^ string_of_reg out ^ string_of_reg r1 ^ " " ^ string_of_reg r2
-| ISub (out, r1, r2, _) ->  "        sub     " ^ string_of_reg out ^ string_of_reg r1 ^ " " ^ string_of_reg r2
-| IMul (out, r1, r2, _) ->  "        mul     " ^ string_of_reg out ^ string_of_reg r1 ^ " " ^ string_of_reg r2
-| IDiv (out, r1, r2, _) ->  "        div     " ^ string_of_reg out ^ string_of_reg r1 ^ " " ^ string_of_reg r2
-| IMod (out, r1, r2, _) ->  "        mod     " ^ string_of_reg out ^ string_of_reg r1 ^ " " ^ string_of_reg r2
+| IAdd (out, r1, r2, _) ->  "        add     " ^ string_of_reg out ^ " " ^ string_of_reg r1 ^ " " ^ string_of_reg r2
+| ISub (out, r1, r2, _) ->  "        sub     " ^ string_of_reg out ^ " " ^ string_of_reg r1 ^ " " ^ string_of_reg r2
+| IMul (out, r1, r2, _) ->  "        mul     " ^ string_of_reg out ^ " " ^ string_of_reg r1 ^ " " ^ string_of_reg r2
+| IDiv (out, r1, r2, _) ->  "        div     " ^ string_of_reg out ^ " " ^ string_of_reg r1 ^ " " ^ string_of_reg r2
+| IMod (out, r1, r2, _) ->  "        mod     " ^ string_of_reg out ^ " " ^ string_of_reg r1 ^ " " ^ string_of_reg r2
 | IReturn s ->
                   (match s with
                    | None -> ""
@@ -1054,7 +1054,6 @@ let translate_riscv_single: ir -> string = function
                   "        mv      a0 " ^ string_of_reg r ^ "\n"
                   ) ^
                   "        addi    sp s0 0\n" ^
-                  "        addi    s0 0(sp)\n" ^
                   "        lw      s0 0(sp)\n" ^
                   "        lw      ra 4(sp)\n" ^
                   "        addi    sp sp 8\n" ^
@@ -1074,10 +1073,10 @@ let rec translate_riscv (acc: string): ir list -> string = function
 | [] -> acc
 | ILi (r, x, _) :: IMov (rx, r', _) :: sl when r = r' ->
   translate_riscv
-  (acc ^ "x       addi    " ^ string_of_reg rx ^ " x0 " ^ string_of_int x ^ "\n") sl
+  (acc ^ "        addi    " ^ string_of_reg rx ^ " x0 " ^ string_of_int x ^ "\n") sl
 | ILi (r, x, _) :: IReturn (Some r') :: sl when r = r' ->
   translate_riscv
-  (acc ^ "x       addi    a0 x0 " ^ string_of_int x ^ "\n") (IReturn None :: sl)
+  (acc ^ "        addi    a0 x0 " ^ string_of_int x ^ "\n") (IReturn None :: sl)
 | x :: sl -> translate_riscv (acc ^  translate_riscv_single x ^ "\n") sl;;
 
 
