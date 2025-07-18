@@ -723,6 +723,7 @@ type ir =
 | Asciiz of string
 | Word of int
 | Section of string
+| Extern of string
 
 | IJmp of string
 | IJmpIf of reg * string
@@ -740,7 +741,7 @@ type ir =
 | ILowerEquals of reg * reg * reg * reg_alloc
 | IGreaterEquals of reg * reg * reg * reg_alloc
 | IMov of reg * reg * reg_alloc
-| ICall of string * reg_alloc
+| ICall of string * int * reg_alloc
 | IReturn of reg option
 | IEnter
 | INot of reg * reg
@@ -778,7 +779,7 @@ let string_of_ir = function
 | ILowerEquals (out, lhs, rhs, _) -> "    lowerequals   " ^ string_of_reg out ^ " " ^ string_of_reg lhs ^ " " ^ string_of_reg rhs
 | IGreaterEquals (out, lhs, rhs, _) -> "    greaterequals " ^ string_of_reg out ^ " " ^ string_of_reg lhs ^ " " ^ string_of_reg rhs
 | IMov (out, src, _) -> "    mov           " ^ string_of_reg out ^ " " ^ string_of_reg src
-| ICall (id, _) -> "    call          " ^ id
+| ICall (id, _, _) -> "    call          " ^ id
 | IReturn (Some r) -> "    ret           " ^ string_of_reg r
 | IReturn None -> "    ret"
 | IEnter -> "    enter"
@@ -789,6 +790,7 @@ let string_of_ir = function
 | IStoreChar (r, i, r2) -> "    sb            " ^ string_of_reg r ^ " " ^ string_of_int i ^ "(" ^ string_of_reg r2 ^ ")"
 | IStorePtr (r, i, r2) -> "    sptr          " ^ string_of_reg r ^ " " ^ string_of_int i ^ "(" ^ string_of_reg r2 ^ ")"
 | INot (r, r2) -> "    not           " ^ string_of_reg r ^ " " ^ string_of_reg r2
+| Extern s -> ""
 ;;
 
 let translate_ir acc i = "\n" ^ List.fold_right (fun a b -> string_of_ir a ^ "\n" ^ b) i acc;;
@@ -869,7 +871,7 @@ let rec codegen_expr ((alloc, align): codegenCtx) (se: sexpr): ir list * codegen
   | _ -> failwith "Out of parameters." in
   let i = codegen_binary ([A0; A1; A2; A3; A4; A5; A6], el) in
   let (rout, alloc) = alloc_reg alloc in
-  ((push_regs alloc align) @ i @ [ICall (f, alloc)] @ (pop_regs alloc align) @ [IMov (rout, A0, alloc)], (alloc, align), rout)
+  ((push_regs alloc align) @ i @ [ICall (f, List.length el, alloc)] @ (pop_regs alloc align) @ [IMov (rout, A0, alloc)], (alloc, align), rout)
 )
 and codegen_expr_leval ((alloc, align): codegenCtx): sexpr -> ir list * codegenCtx * reg = function
 | SUnary (Indir, e, _) -> codegen_expr (alloc, align) e
@@ -1004,7 +1006,7 @@ let rec codegen_stmt ((alloc, align): codegenCtx) = function
 
 let rec codegen_gdecl ((alloc, align): codegenCtx) = function
 | [] -> []
-| SGlobalDecl (_, FuncTy (_, _)) :: sl -> codegen_gdecl (alloc, align) sl
+| SGlobalDecl (id, FuncTy (_, _)) :: sl -> Extern id :: codegen_gdecl (alloc, align) sl
 | SGlobalDecl (id, _) :: sl -> (
   data_section := (
     !data_section @ [Label (id, true); Word (0)]
@@ -1037,6 +1039,7 @@ let codegen (ctx: codegenCtx) (p: sprogram): ir list =
 (* ---- RISC-V (32bit) code generation ---- *)
 
 let translate_riscv_single: ir -> string = function
+| Extern id -> ""
 | Label (s, true) -> "        .globl " ^ s ^ "\n" ^ s ^ ":"
 | Label (s, false) -> s ^ ":"
 | Section s -> "        ." ^ s
@@ -1046,7 +1049,7 @@ let translate_riscv_single: ir -> string = function
             "        sw      ra 4(sp)\n" ^
             "        sw      s0 0(sp)\n" ^
             "        addi    s0 sp 0"
-| IJmp s -> "        jmp     " ^ s
+| IJmp s -> "        j       " ^ s
 | IJmpIf (r, s) -> "        bnz     " ^ string_of_reg r ^ " " ^ s
 | ILower (out, r1, r2, _) -> "        slt     " ^ string_of_reg out ^ " " ^ string_of_reg r1 ^ " " ^ string_of_reg r2
 | IGreater (out, r1, r2, _) -> "        sgt     " ^ string_of_reg out ^ " " ^ string_of_reg r1 ^ " " ^ string_of_reg r2
@@ -1075,7 +1078,7 @@ let translate_riscv_single: ir -> string = function
 | ILi (r, i, _) -> "        li      " ^ string_of_reg r ^ " " ^ string_of_int i
 | ILa (r, id, _) -> "        la      " ^ string_of_reg r ^ " " ^ id
 | IMov (out, r1, _) -> "        mv      " ^ string_of_reg out ^ " " ^ string_of_reg r1
-| ICall (f, _) -> "        jal     " ^ f
+| ICall (f, _, _) -> "        jal     " ^ f
 | INot (out, r1) -> "        not     " ^ string_of_reg out ^ " " ^ string_of_reg r1
 | ILoadByte (r, off, d) -> "        lb      " ^ string_of_reg r ^ " " ^ string_of_int off ^ "(" ^ string_of_reg d ^ ")"
 | ILoadInt (r, off, d) -> "        lw      " ^ string_of_reg r ^ " " ^ string_of_int off ^ "(" ^ string_of_reg d ^ ")"
@@ -1095,6 +1098,76 @@ let rec translate_riscv (acc: string): ir list -> string = function
   (acc ^ "        addi    a0 x0 " ^ string_of_int x ^ "\n") (IReturn None :: sl)
 | x :: sl -> translate_riscv (acc ^  translate_riscv_single x ^ "\n") sl;;
 
+(* ---- x64 NASM code generation ---- *)
+
+let rec register_from_reg s r: string =
+  let aux = function
+  | T0 -> "a"
+  | T1 -> "b"
+  | T2 -> "c"
+  | T3 -> "d"
+  | T4 -> "rdi"
+  | A0 -> "rdi"
+  | A1 -> "rsi"
+  | A2 -> "a"
+  | A4 -> "b"
+  | A5 -> "c"
+  | A6 -> "d"
+  | _ -> "rsi"
+in if int_of_reg [r] > 3 then aux r
+else (
+  match s with
+  | 1 -> aux r ^ "l"
+  | 4 -> "e" ^ aux r ^ "x"
+  | _ -> "r" ^ aux r ^ "x"
+);;
+
+let rec translate_nasm_x64_single: ir -> string = function
+| Label (s, true) -> "        global " ^ s ^ "\n" ^
+                     s ^ ":"
+| Label (s, false) -> s ^ ":"
+| Section s -> "section ." ^ s
+| Extern s -> "extern " ^ s
+| Word r -> "        ddq " ^ string_of_int r
+| Asciiz s -> "        db '" ^ s ^ "', 0"
+| IEnter -> "        push    rbp\n" ^
+            "        mov     rbp, rsp"
+| IReturn None -> "        mov     rsp, rbp\n" ^
+                  "        pop     rbp\n" ^
+                  "        ret"
+| IReturn (Some r) -> if r = T0 then translate_nasm_x64_single (IReturn None)
+else "    mov     rax, " ^ register_from_reg 8 r ^ "\n" ^ translate_nasm_x64_single (IReturn None)
+| IJmp s -> "        jmp     " ^ s
+| IJmpIf (r, s) -> "        cmp     " ^ register_from_reg 8 r ^ ", 0\n" ^
+                                "        jne     " ^ s
+| IAdd (out, r1, r2, _) when r1 = out -> "        add     " ^ register_from_reg 8 r1 ^ ", " ^ register_from_reg 8 r2
+| IAdd (out, r1, r2, _) -> "        add     " ^ register_from_reg 8 r1 ^ ", " ^ register_from_reg 8 r2 ^ "\n" ^
+"        mov     " ^ register_from_reg 8 out ^ ", " ^ register_from_reg 8 r1
+| ISub (out, r1, r2, _) when r1 = out -> "        sub     " ^ register_from_reg 8 r1 ^ ", " ^ register_from_reg 8 r2
+| ISub (out, r1, r2, _) -> "        sub     " ^ register_from_reg 8 r1 ^ ", " ^ register_from_reg 8 r2 ^ "\n" ^
+"        mov     " ^ register_from_reg 8 out ^ ", " ^ register_from_reg 8 r1
+| IMul (out, r1, r2, _) when r1 = out -> "        imul    " ^ register_from_reg 8 r1 ^ ", " ^ register_from_reg 8 r2
+| IMul (out, r1, r2, _) -> "        imul    " ^ register_from_reg 8 r1 ^ ", " ^ register_from_reg 8 r2 ^ "\n" ^
+"        mov     " ^ register_from_reg 8 out ^ ", " ^ register_from_reg 8 r1
+| ILa (r, s, _) -> "        mov     " ^ register_from_reg 8 r ^ ", " ^ s
+| ILi (r, i, _) -> "        mov     " ^ register_from_reg 8 r ^ ", " ^ string_of_int i
+| IMov (a, r, _) when is_arg a = -1 -> "        push    " ^ register_from_reg 8 r
+| IMov (r1, r2, _) when register_from_reg 8 r1 = register_from_reg 8 r2  -> ""
+| IMov (r1, r2, _) -> "        mov     " ^ register_from_reg 8 r1 ^ ", " ^ register_from_reg 8 r2
+| _ -> "; Not implemented!"
+and is_arg = function
+| A0 -> 0
+| A1 -> 1
+| A2 -> 2
+| A3 -> 3
+| A4 -> 4
+| A5 -> 5
+| A6 -> 6
+| _ -> -1;;
+
+let rec translate_x64_nasm (acc: string): ir list -> string = function
+| [] -> acc
+| x :: sl -> translate_x64_nasm (acc ^  translate_nasm_x64_single x ^ "\n") sl;;
 
 (* ---- Compiler Pipeline ---- *)
 
@@ -1107,6 +1180,7 @@ type ccbackend = string * (string -> ir list -> string) * int * reg list;;
 
 let backends: ccbackend list = [
     ("riscv", translate_riscv, 4, [T0; T1; T2; T3; T4; T5; T6]);
+    ("nasm", translate_x64_nasm, 8, [T0; T1; T2; T3; T4; T5]);
     ("ir", translate_ir, 4, [T0; T1; T2; T3; T4; T5; T6])
 ];;
 
