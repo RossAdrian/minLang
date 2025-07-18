@@ -746,8 +746,10 @@ type ir =
 | INot of reg * reg
 | ILoadInt of reg * int * reg
 | ILoadByte of reg * int * reg
+| ILoadPtr of reg * int * reg
 | IStoreInt of reg * int * reg
 | IStoreChar of reg * int * reg
+| IStorePtr of reg * int * reg
 ;;
 
 let string_of_ir = function
@@ -782,8 +784,10 @@ let string_of_ir = function
 | IEnter -> "    enter"
 | ILoadInt (r, i, r2) -> "    lw            " ^ string_of_reg r ^ " " ^ string_of_int i ^ "(" ^ string_of_reg r2 ^ ")"
 | ILoadByte (r, i, r2) -> "    lb            " ^ string_of_reg r ^ " " ^ string_of_int i ^ "(" ^ string_of_reg r2 ^ ")"
+| ILoadPtr (r, i, r2) -> "    lptr           " ^ string_of_reg r ^ " " ^ string_of_int i ^ "(" ^ string_of_reg r2 ^ ")"
 | IStoreInt (r, i, r2) -> "    sw            " ^ string_of_reg r ^ " " ^ string_of_int i ^ "(" ^ string_of_reg r2 ^ ")"
 | IStoreChar (r, i, r2) -> "    sb            " ^ string_of_reg r ^ " " ^ string_of_int i ^ "(" ^ string_of_reg r2 ^ ")"
+| IStorePtr (r, i, r2) -> "    sptr          " ^ string_of_reg r ^ " " ^ string_of_int i ^ "(" ^ string_of_reg r2 ^ ")"
 | INot (r, r2) -> "    not           " ^ string_of_reg r ^ " " ^ string_of_reg r2
 ;;
 
@@ -820,9 +824,13 @@ let rec codegen_expr ((alloc, align): codegenCtx) (se: sexpr): ir list * codegen
   let (i, ctxx, r) = codegen_expr_leval (alloc, align) se in
   (i @ [ILoadByte (r, 0, r)], ctxx, r)
 )
-| SIdent (id, _, _) -> (
+| SIdent (id, Int, _) -> (
   let (i, ctxx, r) = codegen_expr_leval (alloc, align) se in
   (i @ [ILoadInt (r, 0, r)], ctxx, r)
+)
+| SIdent (id, _, _) -> (
+  let (i, ctxx, r) = codegen_expr_leval (alloc, align) se in
+  (i @ [ILoadPtr (r, 0, r)], ctxx, r)
 )
 | SUnary (Addr, e, _) -> (
   codegen_expr_leval (alloc, align) e
@@ -835,9 +843,13 @@ let rec codegen_expr ((alloc, align): codegenCtx) (se: sexpr): ir list * codegen
   let (i, ctxx, r) = e |> codegen_expr (alloc, align) in
   (i @ [ILoadByte (r, 0, r)], ctxx, r)
 )
-| SUnary (Indir, e, _) -> (
+| SUnary (Indir, e, Int) -> (
   let (i, ctxx, r) = e |> codegen_expr (alloc, align) in
   (i @ [ILoadInt (r, 0, r)], ctxx, r)
+)
+| SUnary (Indir, e, _) -> (
+  let (i, ctxx, r) = e |> codegen_expr (alloc, align) in
+  (i @ [ILoadPtr (r, 0, r)], ctxx, r)
 )
 | SBinary (op, lhs, rhs, t) -> (
   let (ils, ctxx, rl) = codegen_expr (alloc, align) lhs in
@@ -896,7 +908,8 @@ and codegen_create_binop outp lhs rhs ctx t align = function
 | Assign -> (
   match t with
   | Char -> [IStoreChar (rhs, 0, lhs); IMov (outp, rhs, ctx)]
-  | _ -> [IStoreInt (rhs, 0, lhs); IMov (outp, rhs, ctx)]
+  | Int -> [IStoreInt (rhs, 0, lhs); IMov (outp, rhs, ctx)]
+  | _ -> [IStorePtr (rhs, 0, lhs); IMov (outp, rhs, ctx)]
 )
 and int_of_reg = function
 | T0 :: _ -> 0
@@ -928,7 +941,7 @@ and pop_regs alloc align =
   let i = int_of_reg alloc in
   let rec create_pop i =
     if i <= 0 then []
-    else create_pop (i-1) @ [ILoadInt (reg_of_int (i-1), 0, SP); ILi (rxx, align, alloc); IAdd (SP, SP, rxx, List.tl alloc)]
+    else create_pop (i-1) @ [ILoadPtr (reg_of_int (i-1), 0, SP); ILi (rxx, align, alloc); IAdd (SP, SP, rxx, List.tl alloc)]
   in create_pop i
 and fill_regs alloc =
   let i = int_of_reg alloc in
@@ -1066,8 +1079,10 @@ let translate_riscv_single: ir -> string = function
 | INot (out, r1) -> "        not     " ^ string_of_reg out ^ " " ^ string_of_reg r1
 | ILoadByte (r, off, d) -> "        lb      " ^ string_of_reg r ^ " " ^ string_of_int off ^ "(" ^ string_of_reg d ^ ")"
 | ILoadInt (r, off, d) -> "        lw      " ^ string_of_reg r ^ " " ^ string_of_int off ^ "(" ^ string_of_reg d ^ ")"
+| ILoadPtr (r, off, d) -> "        lw      " ^ string_of_reg r ^ " " ^ string_of_int off ^ "(" ^ string_of_reg d ^ ")"
 | IStoreChar (r, off, d) -> "        sb      " ^ string_of_reg r ^ " " ^ string_of_int off ^ "(" ^ string_of_reg d ^ ")"
 | IStoreInt (r, off, d) -> "        sw      " ^ string_of_reg r ^ " " ^ string_of_int off ^ "(" ^ string_of_reg d ^ ")"
+| IStorePtr (r, off, d) -> "        sw      " ^ string_of_reg r ^ " " ^ string_of_int off ^ "(" ^ string_of_reg d ^ ")"
 ;;
 
 let rec translate_riscv (acc: string): ir list -> string = function
