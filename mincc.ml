@@ -853,6 +853,13 @@ let rec codegen_expr ((alloc, align): codegenCtx) (se: sexpr): ir list * codegen
   let (i, ctxx, r) = e |> codegen_expr (alloc, align) in
   (i @ [ILoadPtr (r, 0, r)], ctxx, r)
 )
+| SBinary (Assign, lhs, rhs, t) -> (
+  let (ils, ctxx, rl) = codegen_expr_leval (alloc, align) lhs in
+  let (irs, ctxx, rr) = codegen_expr (ctxx) rhs in
+  let (outp, ctxx1) = alloc_reg (alloc) in
+  let i = ils @ irs @ (codegen_create_binop outp rl rr (fst ctxx) t align Assign) in
+  (i, (ctxx1, align), outp)
+)
 | SBinary (op, lhs, rhs, t) -> (
   let (ils, ctxx, rl) = codegen_expr (alloc, align) lhs in
   let (irs, ctxx, rr) = codegen_expr (ctxx) rhs in
@@ -1159,12 +1166,16 @@ else "    mov     rax, " ^ register_from_reg 8 r ^ "\n" ^ translate_nasm_x64_sin
 | IMov (a, r, _) when is_arg a = -1 -> "        push    " ^ register_from_reg 8 r
 | IMov (r1, r2, _) when register_from_reg 8 r1 = register_from_reg 8 r2  -> ""
 | IMov (r1, r2, _) -> "        mov     " ^ register_from_reg 8 r1 ^ ", " ^ register_from_reg 8 r2
-| ILoadByte (r1, 0, r2) -> "        mov     " ^ register_from_reg 1 r1 ^ ", [" ^ register_from_reg 8 r2 ^ "]"
+| ILoadByte (r1, 0, r2) -> "        mov     " ^ register_from_reg 1 r1 ^ ", [" ^ register_from_reg 8 r2 ^ "]\n" ^
+                                     "        movzx   " ^ register_from_reg 8 r1 ^ ", " ^ register_from_reg 1 r1
 | ILoadInt (r1, 0, r2) -> "        mov     " ^ register_from_reg 4 r1 ^ ", [" ^ register_from_reg 8 r2 ^ "]"
 | ILoadPtr (r1, 0, r2) -> "        mov     " ^ register_from_reg 8 r1 ^ ", [" ^ register_from_reg 8 r2 ^ "]"
 | IStoreChar (r1, 0, r2) -> "        mov     [" ^ register_from_reg 8 r2 ^ "], " ^ register_from_reg 1 r1
 | IStoreInt (r1, 0, r2) -> "        mov     [" ^ register_from_reg 8 r2 ^ "], " ^ register_from_reg 4 r1
 | IStorePtr (r1, 0, r2) -> "        mov     [" ^ register_from_reg 8 r2 ^ "], " ^ register_from_reg 8 r1
+| INot (out, r) -> "        cmp     " ^ register_from_reg 8 r ^ ", 0\n" ^
+                             "        sete    " ^ register_from_reg 1 out ^ "\n" ^
+                             "        movzx   " ^ register_from_reg 8 out ^ ", " ^ register_from_reg 1 out
 | _ -> "; Not implemented!"
 and is_arg = function
 | A0 -> 0
@@ -1178,6 +1189,10 @@ and is_arg = function
 
 let rec translate_x64_nasm (acc: string): ir list -> string = function
 | [] -> acc
+| ILi (r1, i, _) :: ISub (r2, r3, r4, _) :: sl when r2 = r3 && r1 = r4 -> (
+  let i = "        sub     " ^ register_from_reg 8 r2 ^ ", " ^ string_of_int i in
+  translate_x64_nasm (acc ^ i ^ "\n") sl
+)
 | ISub (r1, r2, r3, ctx) :: sl when r1 <> r2 -> (
   let c = List.hd ctx in
   let i = "        mov     " ^ register_from_reg 8 c ^ ", " ^ register_from_reg 8 r2 ^ "\n" ^
