@@ -1,0 +1,14 @@
+# MinLang workflow
+stages:
+  - test
+
+test:
+  stage: test
+  image: ocaml/opam:debian-11-ocaml-4.14
+  before_script:
+    - sudo apt update
+    - curl https://sh.rustup.rs -sSf | sh -s -- -y
+    - source $HOME/.cargo/env
+    - cargo install just
+  script:
+    - just test
