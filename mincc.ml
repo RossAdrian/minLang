@@ -1102,25 +1102,29 @@ let rec translate_riscv (acc: string): ir list -> string = function
 
 let rec register_from_reg s r: string =
   let aux = function
-  | T0 -> "a"
-  | T1 -> "b"
-  | T2 -> "c"
-  | T3 -> "d"
-  | T4 -> "rdi"
-  | A0 -> "rdi"
-  | A1 -> "rsi"
-  | A2 -> "a"
-  | A4 -> "b"
-  | A5 -> "c"
-  | A6 -> "d"
-  | _ -> "rsi"
-in if int_of_reg [r] > 3 then aux r
-else (
-  match s with
-  | 1 -> aux r ^ "l"
-  | 4 -> "e" ^ aux r ^ "x"
-  | _ -> "r" ^ aux r ^ "x"
-);;
+  | (1, T0) -> "al"
+  | (4, T0) -> "eax"
+  | (8, T0) -> "rax"
+  | (1, T1) -> "bl"
+  | (4, T1) -> "ebx"
+  | (8, T1) -> "rbx"
+  | (1, T2) -> "cl"
+  | (4, T2) -> "ecx"
+  | (8, T2) -> "rcx"
+  | (1, T3) -> "dl"
+  | (4, T3) -> "edx"
+  | (8, T3) -> "rdx"
+  | (4, T4) -> "edi"
+  | (8, T4) -> "rdi"
+  | (4, T5) -> "esi"
+  | (8, T5) -> "rsi"
+  | (4, SP) -> "esp"
+  | (8, SP) -> "rsp"
+  | (4, FP) -> "ebp"
+  | (8, FP) -> "rbp"
+  | _ -> "; Not supported register"
+in aux (s, r);;
+;;
 
 let rec translate_nasm_x64_single: ir -> string = function
 | Label (s, true) -> "        global " ^ s ^ "\n" ^
@@ -1154,6 +1158,12 @@ else "    mov     rax, " ^ register_from_reg 8 r ^ "\n" ^ translate_nasm_x64_sin
 | IMov (a, r, _) when is_arg a = -1 -> "        push    " ^ register_from_reg 8 r
 | IMov (r1, r2, _) when register_from_reg 8 r1 = register_from_reg 8 r2  -> ""
 | IMov (r1, r2, _) -> "        mov     " ^ register_from_reg 8 r1 ^ ", " ^ register_from_reg 8 r2
+| ILoadByte (r1, 0, r2) -> "        mov     " ^ register_from_reg 1 r1 ^ ", [" ^ register_from_reg 8 r2 ^ "]"
+| ILoadInt (r1, 0, r2) -> "        mov     " ^ register_from_reg 4 r1 ^ ", [" ^ register_from_reg 8 r2 ^ "]"
+| ILoadPtr (r1, 0, r2) -> "        mov     " ^ register_from_reg 8 r1 ^ ", [" ^ register_from_reg 8 r2 ^ "]"
+| IStoreChar (r1, 0, r2) -> "        mov     [" ^ register_from_reg 8 r2 ^ "], " ^ register_from_reg 1 r1
+| IStoreInt (r1, 0, r2) -> "        mov     [" ^ register_from_reg 8 r2 ^ "], " ^ register_from_reg 4 r1
+| IStorePtr (r1, 0, r2) -> "        mov     [" ^ register_from_reg 8 r2 ^ "], " ^ register_from_reg 8 r1
 | _ -> "; Not implemented!"
 and is_arg = function
 | A0 -> 0
@@ -1167,6 +1177,13 @@ and is_arg = function
 
 let rec translate_x64_nasm (acc: string): ir list -> string = function
 | [] -> acc
+| ISub (r1, r2, r3, ctx) :: sl when r1 <> r2 -> (
+  let c = List.hd ctx in
+  let i = "        mov     " ^ register_from_reg 8 c ^ ", " ^ register_from_reg 8 r2 ^ "\n" ^
+          "        sub     " ^ register_from_reg 8 c ^ ", " ^ register_from_reg 8 r3 ^ "\n" ^
+          "        mov     " ^ register_from_reg 8 r1 ^ ", " ^ register_from_reg 8 c ^ "\n" in
+  translate_x64_nasm (acc ^ i) sl
+)
 | x :: sl -> translate_x64_nasm (acc ^  translate_nasm_x64_single x ^ "\n") sl;;
 
 (* ---- Compiler Pipeline ---- *)
