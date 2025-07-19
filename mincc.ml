@@ -935,7 +935,7 @@ and push_regs alloc align =
   let i = int_of_reg alloc in
   let rec create_push i =
     if i <= 0 then []
-    else [ILi (rxx, align, alloc); ISub (SP, SP, rxx, List.tl alloc); IStoreInt (reg_of_int (i-1), 0, SP)]
+    else [ILi (rxx, align, alloc); ISub (SP, SP, rxx, List.tl alloc); IStorePtr (reg_of_int (i-1), 0, SP)]
     @ create_push (i-1)
   in create_push i
 and pop_regs alloc align =
@@ -965,7 +965,8 @@ let rec codegen_stmt ((alloc, align): codegenCtx) = function
     match codegen_expr (alloc, align) e with
     | (i, _, r) -> i @ (match t with
       | Char -> [IStoreChar (r, 0, SP)]
-      | _ -> [IStoreInt (r, 0, SP)]
+      | Int -> [IStoreInt (r, 0, SP)]
+      | _ -> [IStorePtr (r, 0, SP)]
     )
   ) @ codegen_stmt (alloc, align) sl)
 )
@@ -1017,7 +1018,7 @@ let rec codegen_gdecl ((alloc, align): codegenCtx) = function
     let (r, ctx) = alloc_reg alloc in
     let rec push_args n l =
       if n = l then []
-      else [ILi (r, align, ctx); ISub (SP, SP, r, ctx); IStoreInt (reg_arg n, 0, SP)] @ push_args (n+1) l
+      else [ILi (r, align, ctx); ISub (SP, SP, r, ctx); IStorePtr (reg_arg n, 0, SP)] @ push_args (n+1) l
     in push_args 0 (List.length args)
   ) @ codegen_stmt (alloc, align) [sl'] @ [IReturn None] @ codegen_gdecl (alloc, align) sl
 )

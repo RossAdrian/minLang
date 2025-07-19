@@ -15,22 +15,8 @@ build:
   echo "✅ mincc compiler built"
 
 # Run all tests
-test: build download-venus
-  mkdir -p build
-  for src in tests/*.minLang; do \
-    base=$(basename $src .minLang); \
-    asm="build/$base.s"; \
-    out="build/$base.out"; \
-    echo "🛠️ Compiling $src..."; \
-    ./mincc -c $src -o $asm; \
-    echo "🚀 Running $asm..."; \
-    java -jar build/venus.jar $asm > $out; \
-    if grep -q "a0 = 0" $out; then \
-      echo "✅ $base passed"; \
-    else \
-      echo "❌ $base failed"; \
-    fi; \
-  done
+test: build
+  sh ./scripts/run_x64_tests.sh
 
 # Default target
 default: test
