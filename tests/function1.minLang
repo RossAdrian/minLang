@@ -1,0 +1,9 @@
+fn f(n: int): int {
+    let x = n + 1;
+    return x * 3;
+}
+
+fn main(): int {
+    let t = 3 * f(2) + 1;
+    return t - 28;
+}

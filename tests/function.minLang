@@ -1,0 +1,12 @@
+fn f(x: int): int {
+    let r = x + 1;
+
+    return r;
+}
+
+fn main(): int {
+    let t = 0;
+
+    t = f(t);
+    return t - 1;
+}

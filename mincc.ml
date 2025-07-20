@@ -1130,6 +1130,13 @@ let rec register_from_reg s r: string =
   | (8, SP) -> "rsp"
   | (4, FP) -> "ebp"
   | (8, FP) -> "rbp"
+  (* Argument registers *)
+  | (8, A0) -> "rdi"
+  | (8, A1) -> "rsi"
+  | (8, A2) -> "rdx"
+  | (8, A3) -> "rcx"
+  | (8, A4) -> "r8"
+  | (8, A5) -> "r9"
   | _ -> "; Not supported register"
 in aux (s, r);;
 ;;
@@ -1163,7 +1170,8 @@ else "    mov     rax, " ^ register_from_reg 8 r ^ "\n" ^ translate_nasm_x64_sin
 "        mov     " ^ register_from_reg 8 out ^ ", " ^ register_from_reg 8 r1
 | ILa (r, s, _) -> "        mov     " ^ register_from_reg 8 r ^ ", " ^ s
 | ILi (r, i, _) -> "        mov     " ^ register_from_reg 8 r ^ ", " ^ string_of_int i
-| IMov (a, r, _) when is_arg a = -1 -> "        push    " ^ register_from_reg 8 r
+| IMov (r, A0, _) -> "        mov     " ^ register_from_reg 8 r ^ ", r9"
+| IMov (a, r, _) when is_arg a <> -1 -> "        push    " ^ register_from_reg 8 r
 | IMov (r1, r2, _) when register_from_reg 8 r1 = register_from_reg 8 r2  -> ""
 | IMov (r1, r2, _) -> "        mov     " ^ register_from_reg 8 r1 ^ ", " ^ register_from_reg 8 r2
 | ILoadByte (r1, 0, r2) -> "        mov     " ^ register_from_reg 1 r1 ^ ", [" ^ register_from_reg 8 r2 ^ "]\n" ^
@@ -1176,6 +1184,17 @@ else "    mov     rax, " ^ register_from_reg 8 r ^ "\n" ^ translate_nasm_x64_sin
 | INot (out, r) -> "        cmp     " ^ register_from_reg 8 r ^ ", 0\n" ^
                              "        sete    " ^ register_from_reg 1 out ^ "\n" ^
                              "        movzx   " ^ register_from_reg 8 out ^ ", " ^ register_from_reg 1 out
+| ICall (f, n, _) -> (
+  let rec pop_args n =
+    if n = 0 then ""
+    else (
+      "        pop     " ^ register_from_reg 8 (arg_of_int (n-1)) ^ "\n" ^
+      pop_args (n-1)
+    )
+  in pop_args n ^
+  "        call    " ^ f ^ "\n" ^
+  "        mov     r9, rax"
+)
 | _ -> "; Not implemented!"
 and is_arg = function
 | A0 -> 0
@@ -1185,12 +1204,26 @@ and is_arg = function
 | A4 -> 4
 | A5 -> 5
 | A6 -> 6
-| _ -> -1;;
+| _ -> -1
+and arg_of_int = function
+| 0 -> A0
+| 1 -> A1
+| 2 -> A2
+| 3 -> A3
+| 4 -> A4
+| 5 -> A5
+| 6 -> A6
+| _ -> A0
+;;
 
 let rec translate_x64_nasm (acc: string): ir list -> string = function
 | [] -> acc
 | ILi (r1, i, _) :: ISub (r2, r3, r4, _) :: sl when r2 = r3 && r1 = r4 -> (
   let i = "        sub     " ^ register_from_reg 8 r2 ^ ", " ^ string_of_int i in
+  translate_x64_nasm (acc ^ i ^ "\n") sl
+)
+| ILi (r1, i, _) :: IAdd (r2, r3, r4, _) :: sl when r2 = r3 && r1 = r4 -> (
+  let i = "        add     " ^ register_from_reg 8 r2 ^ ", " ^ string_of_int i in
   translate_x64_nasm (acc ^ i ^ "\n") sl
 )
 | ISub (r1, r2, r3, ctx) :: sl when r1 <> r2 -> (
