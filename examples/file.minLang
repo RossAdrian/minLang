@@ -1,0 +1,13 @@
+fn fopen(ptr<char>, ptr<char>): ptr<void>;
+fn fclose(ptr<void>);
+fn fputs(ptr<char>, ptr<void>);
+
+fn main(): int {
+    let msg = "Hello world!";
+
+    let fd = fopen("hello.txt", "w");
+
+    fputs(msg, fd);
+    fclose(fd);
+    return 0;
+}

@@ -50,7 +50,7 @@ following script (x64 linux):
 
 ```bash
 # Compile the source file to assembler code
-./mincc -c input.min -o output.asm -a nasm
+./mincc -c input.minLang -o output.asm -a nasm
 
 # Assemble assembly code to object file
 nasm -felf64 output.asm -o output.o
@@ -72,6 +72,24 @@ fn exit(int): int;
 fn main(): int {
   printf("Hello World!\n");
   return exit(1);
+}
+```
+
+Or for example using files:
+
+```minLang
+fn fopen(ptr<char>, ptr<char>): ptr<void>;
+fn fclose(ptr<void>);
+fn fputs(ptr<char>, ptr<void>);
+
+fn main(): int {
+    let msg = "Hello world!\n";
+
+    let fd = fopen("hello.txt", "w");
+
+    fputs(msg, fd);
+    fclose(fd);
+    return 0;
 }
 ```
 
