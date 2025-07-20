@@ -22,7 +22,7 @@ for src in "$TEST_DIR"/*.minLang; do
     nasm -f elf64 "$asm" -o "$obj"
 
     echo "🛠️ Linking $obj..."
-    gcc "$obj" -o "$bin"
+    gcc -fno-pie -no-pie "$obj" -o "$bin"
 
     echo "🚀 Running $bin..."
     "$bin"
