@@ -1,0 +1,13 @@
+let x: int;
+
+fn inc() {
+    x = x + 1;
+}
+
+fn main(): int {
+    x = 0;
+    inc();
+    inc();
+
+    return x - 2;
+}

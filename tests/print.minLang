@@ -1,0 +1,11 @@
+fn printf(ptr<char>): int;
+
+fn main(): int {
+    let f: ptr<char> = "hello, world ";
+    let off = 12;
+    let fx: ptr<char> = f + off;
+    *fx = 10;
+
+    printf(f);
+    return 0;
+}

@@ -820,7 +820,7 @@ let rec codegen_expr ((alloc, align): codegenCtx) (se: sexpr): ir list * codegen
     let data = (Label (label, false) :: Asciiz s :: data) in
     data_section := data
   ) in let (r, ctxx) = alloc_reg alloc in
-  ([ILa (r, s, ctxx)], (ctxx, align), r)
+  ([ILa (r, label, ctxx)], (ctxx, align), r)
 )
 | SIdent (id, Char, _) -> (
   let (i, ctxx, r) = codegen_expr_leval (alloc, align) se in
@@ -1141,14 +1141,54 @@ let rec register_from_reg s r: string =
 in aux (s, r);;
 ;;
 
+let nasm_string_chunks (s : string) : string =
+  let len = String.length s in
+  let buffer = Buffer.create len in
+  let flush_literal lit =
+    if lit <> "" then Buffer.add_string buffer ("\"" ^ lit ^ "\", ")
+  in
+  let rec loop i literal =
+    if i >= len then (
+      flush_literal literal;
+      Buffer.add_string buffer "0";
+      Buffer.contents buffer
+    ) else
+      match s.[i] with
+      | '\\' when i + 1 < len ->
+        let next = s.[i + 1] in
+        let expanded =
+          match next with
+          | 'n' -> Some 10
+          | 't' -> Some 9
+          | 'r' -> Some 13
+          | '\\' -> Some (Char.code '\\')
+          | '"'  -> Some (Char.code '"')
+          | '\'' -> Some (Char.code '\'')
+          | '0'  -> Some 0
+          | _ -> None
+        in
+        begin match expanded with
+        | Some code ->
+            flush_literal literal;
+            Buffer.add_string buffer (string_of_int code ^ ", ");
+            loop (i + 2) ""
+        | None ->
+            loop (i + 1) (literal ^ String.make 1 s.[i])
+        end
+      | c ->
+        loop (i + 1) (literal ^ String.make 1 c)
+  in
+  loop 0 ""
+
+
 let rec translate_nasm_x64_single: ir -> string = function
 | Label (s, true) -> "        global " ^ s ^ "\n" ^
                      s ^ ":"
 | Label (s, false) -> s ^ ":"
 | Section s -> "section ." ^ s
 | Extern s -> "extern " ^ s
-| Word r -> "        ddq " ^ string_of_int r
-| Asciiz s -> "        db '" ^ s ^ "', 0"
+| Word r -> "        dq " ^ string_of_int r
+| Asciiz s -> "        db " ^ nasm_string_chunks s
 | IEnter -> "        push    rbp\n" ^
             "        mov     rbp, rsp"
 | IReturn None -> "        mov     rsp, rbp\n" ^

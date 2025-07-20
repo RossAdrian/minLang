@@ -1,0 +1,7 @@
+fn f(x: int, y: int): int {
+    return x * y;
+}
+
+fn main(): int {
+    return f(2, 3) - 6;
+}

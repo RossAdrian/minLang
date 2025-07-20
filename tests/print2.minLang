@@ -1,0 +1,7 @@
+fn printf(ptr<char>, int): int;
+
+fn main(): int {
+    let fmt = "Hello World: %d!\n";
+    printf(fmt, 4);
+    return 0;
+}
