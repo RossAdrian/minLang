@@ -45,8 +45,34 @@ ocamlc -o mincc mincc.ml
 
 ### 2️⃣ Compile a MinLang Source File
 
+To compile a *minLang* source file to an executable, run the
+following script (x64 linux):
+
 ```bash
-./mincc -c input.min -o output.asm
+# Compile the source file to assembler code
+./mincc -c input.min -o output.asm -a nasm
+
+# Assemble assembly code to object file
+nasm -felf64 output.asm -o output.o
+
+# Link object file with C standard library
+gcc -fno-pie -no-pie output.o -o Output
+```
+
+### Using a standard library
+
+By default, *minLang* is linked with the *C standard library*
+by linking with *gcc*. You can freely access library functions
+by declaring function prototypes:
+
+```minLang
+fn printf(ptr<char>): int;
+fn exit(int): int;
+
+fn main(): int {
+  printf("Hello World!\n");
+  return exit(1);
+}
 ```
 
 ### Parameters
