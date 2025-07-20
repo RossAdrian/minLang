@@ -468,8 +468,8 @@ let rec lookup_stack off = function
 | (id, _, off') :: _ when off = off' -> id
 | _ :: tb -> lookup_stack off tb;;
 
-let lookup_continue tb = lookup_stack (-2) tb;;
-let lookup_break tb = lookup_stack (-3) tb;;
+let lookup_continue tb = lookup_stack (-3) tb;;
+let lookup_break tb = lookup_stack (-2) tb;;
 
 
 let stackAlign (s: symbolTable): int = lookup_stack (-4) s |> int_of_string;;

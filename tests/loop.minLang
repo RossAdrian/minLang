@@ -1,0 +1,21 @@
+fn main(): int {
+    let x = 10;
+
+    loop {
+        x = x - 1;
+
+        if !x {
+            break;
+        }
+    }
+
+    let y = 10;
+    while 1 {
+        y = y - 1;
+
+        if !y break; else continue;
+        y = 200;
+    }
+
+    return x + y;
+}
