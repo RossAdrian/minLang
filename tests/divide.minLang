@@ -1,0 +1,23 @@
+fn main(): int {
+    let error = 0;
+
+    let a = 36;
+    let b = 6;
+    let q1 = a / b;
+    let rx1 = q1 * b;
+    error = error + a - rx1;
+
+    let x = 72;
+    let y = 8;
+    let q2 = x / y;
+    let rx2 = q2 * y;
+    error = error + x - rx2;
+
+    let m = 100;
+    let n = 20;
+    let q3 = m / n;
+    let rx3 = q3 * n;
+    error = error + m - rx3;
+
+    return error;
+}

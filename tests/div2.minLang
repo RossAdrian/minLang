@@ -1,0 +1,4 @@
+fn main(): int {
+    let x = 3 * (1 * (4 / 2));
+    return x - 6;
+}

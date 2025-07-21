@@ -681,6 +681,11 @@ let string_of_reg = function
 
 type reg_alloc = reg list
 
+let rec reg_is_free r = function
+  | [] -> false
+  | r' :: _ when r' = r -> true
+  | _ :: rl -> reg_is_free r rl
+
 type ir =
   | Label of string * bool
   | Asciiz of string
@@ -1348,6 +1353,31 @@ let rec translate_nasm_x64_single : ir -> string = function
           ^ pop_args (n - 1)
       in
       pop_args n ^ "        call    " ^ f ^ "\n" ^ "        mov     r9, rax"
+  | IDiv (T0, T0, r2, free_regs) when reg_is_free T3 free_regs ->
+      "        cqo\n" ^ "        idiv    " ^ register_from_reg 8 r2
+  | IDiv (T0, T0, r2, free_regs) ->
+      let sr = free_regs |> alloc_reg |> fst in
+      "        mov     " ^ register_from_reg 8 sr ^ ", rdx\n" ^ "        cqo\n"
+      ^ "        idiv    " ^ register_from_reg 8 r2 ^ "\n"
+      ^ "        mov     rdx, " ^ register_from_reg 8 sr
+  | IDiv (out, r1, T3, r2 :: free_regs) ->
+      let raxx, _ = alloc_reg free_regs in
+      "        mov     " ^ register_from_reg 8 raxx ^ ", rax\n"
+      ^ "        mov     " ^ register_from_reg 8 r2 ^ ", rdx\n"
+      ^ "        mov     rax, " ^ register_from_reg 8 r1 ^ "\n"
+      ^ "        cqo\n" ^ "        idiv    " ^ register_from_reg 8 r2 ^ "\n"
+      ^ "        mov     " ^ register_from_reg 8 out ^ ", rax\n"
+      ^ "        mov     rax, " ^ register_from_reg 8 raxx
+  | IDiv (out, r1, r2, free_regs) ->
+      let raxx, free_regs = alloc_reg free_regs in
+      let rdxx, _ = alloc_reg free_regs in
+      "        mov     " ^ register_from_reg 8 raxx ^ ", rax\n"
+      ^ "        mov     " ^ register_from_reg 8 rdxx ^ ", rdx\n"
+      ^ "        mov     rax, " ^ register_from_reg 8 r1 ^ "\n"
+      ^ "        cqo\n" ^ "        idiv    " ^ register_from_reg 8 r2 ^ "\n"
+      ^ "        mov     " ^ register_from_reg 8 out ^ ", rax\n"
+      ^ "        mov     rdx, " ^ register_from_reg 8 rdxx ^ "\n"
+      ^ "        mov     rax, " ^ register_from_reg 8 raxx
   | _ -> "; Not implemented!"
 
 and is_arg = function
