@@ -201,6 +201,8 @@ let token_to_binop = function
   | EQUALS -> Some Equals
   | LOWEREQUALS -> Some LowerEquals
   | GREATEREQUALS -> Some GreaterEquals
+  | LARROW -> Some Lower
+  | RARROW -> Some Greater
   | ASSIGN -> Some Assign
   | _ -> None
 
@@ -1215,8 +1217,10 @@ let rec register_from_reg s r : string =
     | 1, T3 -> "dl"
     | 4, T3 -> "edx"
     | 8, T3 -> "rdx"
+    | 1, T4 -> "dil"
     | 4, T4 -> "edi"
     | 8, T4 -> "rdi"
+    | 1, T5 -> "sil"
     | 4, T5 -> "esi"
     | 8, T5 -> "rsi"
     | 4, SP -> "esp"
@@ -1378,6 +1382,11 @@ let rec translate_nasm_x64_single : ir -> string = function
       ^ "        mov     " ^ register_from_reg 8 out ^ ", rax\n"
       ^ "        mov     rdx, " ^ register_from_reg 8 rdxx ^ "\n"
       ^ "        mov     rax, " ^ register_from_reg 8 raxx
+  | ILowerEquals(out, r1, r2, _) -> (
+    "        cmp     " ^ register_from_reg 8 r1 ^ ", " ^ register_from_reg 8 r2 ^ "\n" ^
+    "        setle   " ^ register_from_reg 1 out ^ "\n" ^
+    "        movzx   " ^ register_from_reg 8 out ^ ", " ^ register_from_reg 1 out
+  )
   | _ -> "; Not implemented!"
 
 and is_arg = function
