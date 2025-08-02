@@ -1476,7 +1476,7 @@ let compile ((_, translate, align, regs) : ccbackend) (src : string) : string =
 
 let input_file = ref ""
 let output_file = ref ""
-let asm_dialect = ref "riscv"
+let asm_dialect = ref "nasm"
 
 let speclist =
   [

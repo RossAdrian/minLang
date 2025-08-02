@@ -1,0 +1,11 @@
+fn fak(n: int): int {
+    if n <= 1 {
+        return 1;
+    }
+
+    return n * fak(n-1);
+}
+
+fn main(): int {
+    return fak(4) - 24;
+}
