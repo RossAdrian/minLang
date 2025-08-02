@@ -18,6 +18,22 @@ MinLang draws inspiration from C, while stripping the syntax down to the essenti
 - **Return statements**
 - No runtime, no standard library—just minimal code and direct control
 
+## 🔧 Status
+
+MinLang is an experimental programming language not meant to be used in production. Up to now, it includes
+several features, but contains some limits:
+
+- No vaiadic functions
+- No position independent binaries
+- Until now, only x64 assembler output is tested
+- No nested function calls (no compiler rejection, but execution is undefined behavior)
+
+Also, this project is currently *WIP*. The following features are still under construction:
+
+- More x64 tests
+- RISC-V testing infrastructure
+- Complete missing x64 binary comparasion operators (only `<=` is implemented)
+- Add support for variadic C function calls (i.e. `fn printf(fmt: ptr<char>, ...): int;` declaration support)
 
 ## 💻 Example
 
