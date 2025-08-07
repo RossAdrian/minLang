@@ -1,0 +1,7 @@
+fn main(): int {
+    let x = 4;
+    let z = 19;
+
+    let out = z % x;
+    return out - 3;
+}

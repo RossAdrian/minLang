@@ -41,6 +41,7 @@ type token =
   | PLUS
   | LOWEREQUALS
   | GREATEREQUALS
+  | NOTEQUALS
 
 let is_digit c = c >= '0' && c <= '9'
 let is_letter c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_'
@@ -109,6 +110,7 @@ let rec lex' cs =
   | '}' :: rest -> RBRACE :: lex' rest
   | '=' :: '=' :: rest -> EQUALS :: lex' rest
   | '=' :: rest -> ASSIGN :: lex' rest
+  | '!' :: '=' :: rest -> NOTEQUALS :: lex' rest
   | '!' :: rest -> BANG :: lex' rest
   | '*' :: rest -> STAR :: lex' rest
   | '&' :: rest -> AND :: lex' rest
@@ -204,6 +206,7 @@ let token_to_binop = function
   | LARROW -> Some Lower
   | RARROW -> Some Greater
   | ASSIGN -> Some Assign
+  | NOTEQUALS -> Some NotEquals
   | _ -> None
 
 let token_to_uop = function
@@ -1357,37 +1360,86 @@ let rec translate_nasm_x64_single : ir -> string = function
           ^ pop_args (n - 1)
       in
       pop_args n ^ "        call    " ^ f ^ "\n" ^ "        mov     r9, rax"
-  | IDiv (T0, T0, r2, free_regs) when reg_is_free T3 free_regs ->
-      "        cqo\n" ^ "        idiv    " ^ register_from_reg 8 r2
-  | IDiv (T0, T0, r2, free_regs) ->
+  | IDiv (out, r1, r2, free_regs) ->
+      gen_divide out r1 r2 free_regs false
+  | ILowerEquals(out, r1, r2, _) -> (
+    "        cmp     " ^ register_from_reg 8 r1 ^ ", " ^ register_from_reg 8 r2 ^ "\n" ^
+    "        setle   " ^ register_from_reg 1 out ^ "\n" ^
+    "        movzx   " ^ register_from_reg 8 out ^ ", " ^ register_from_reg 1 out
+  )
+  | IGreaterEquals(out, r1, r2, _) -> (
+    "        cmp     " ^ register_from_reg 8 r1 ^ ", " ^ register_from_reg 8 r2 ^ "\n" ^
+    "        setge   " ^ register_from_reg 1 out ^ "\n" ^
+    "        movzx   " ^ register_from_reg 8 out ^ ", " ^ register_from_reg 1 out
+  )
+  | ILower (out, r1, r2, _) -> (
+    "        cmp     " ^ register_from_reg 8 r1 ^ ", " ^ register_from_reg 8 r2 ^ "\n" ^
+    "        setl    " ^ register_from_reg 1 out ^ "\n" ^
+    "        movzx   " ^ register_from_reg 8 out ^ ", " ^ register_from_reg 1 out
+  )
+  | IGreater (out, r1, r2, _) -> (
+    "        cmp     " ^ register_from_reg 8 r1 ^ ", " ^ register_from_reg 8 r2 ^ "\n" ^
+    "        setg    " ^ register_from_reg 1 out ^ "\n" ^
+    "        movzx   " ^ register_from_reg 8 out ^ ", " ^ register_from_reg 1 out
+  )
+  | ILoadByte(r1, x, r2) -> (
+    "mov     " ^ register_from_reg 1 r1 ^ ", [" ^ string_of_int x ^ "+" ^ register_from_reg 8 r2 ^ "]"
+  )
+  | ILoadInt(r1, x, r2) -> (
+    "mov     " ^ register_from_reg 4 r1 ^ ", [" ^ string_of_int x ^ "+" ^ register_from_reg 8 r2 ^ "]"
+  )
+  | ILoadPtr(r1, x, r2) -> (
+    "mov     " ^ register_from_reg 8 r1 ^ ", [" ^ string_of_int x ^ "+" ^ register_from_reg 8 r2 ^ "]"
+  )
+  | IStoreChar(r1, x, r2) -> (
+    "mov     [" ^ string_of_int x ^ "+" ^ register_from_reg 8 r2 ^ "], " ^ register_from_reg 1 r1
+  )
+  | IStoreInt(r1, x, r2) -> (
+    "mov     [" ^ string_of_int x ^ "+" ^ register_from_reg 8 r2 ^ "], " ^ register_from_reg 4 r1
+  )
+  | IStorePtr(r1, x, r2) -> (
+    "mov     [" ^ string_of_int x ^ "+" ^ register_from_reg 8 r2 ^ "], " ^ register_from_reg 8 r1
+  )
+  | IEquals(out, r1, r2, _) -> (
+    "        cmp     " ^ register_from_reg 8 r1 ^ ", " ^ register_from_reg 8 r2 ^ "\n" ^
+    "        sete    " ^ register_from_reg 1 out ^ "\n" ^
+    "        movzx   " ^ register_from_reg 8 out ^ ", " ^ register_from_reg 1 out
+  )
+  | INotEquals(out, r1, r2, _) -> (
+    "        cmp     " ^ register_from_reg 8 r1 ^ ", " ^ register_from_reg 8 r2 ^ "\n" ^
+    "        setne   " ^ register_from_reg 1 out ^ "\n" ^
+    "        movzx   " ^ register_from_reg 8 out ^ ", " ^ register_from_reg 1 out
+  )
+  | IMod(out, r1, r2, free_regs) -> gen_divide out r1 r2 free_regs true
+and gen_divide out r1 r2 free_regs rem =
+  match out, r1, r2, free_regs with
+  | (T0, T0, r2, free_regs) when reg_is_free T3 free_regs ->
+      "        cqo\n" ^ "        idiv    " ^ register_from_reg 8 r2 ^
+      (if rem then "\n        mov     rax, rdx" else "")
+  | (T0, T0, r2, free_regs) ->
       let sr = free_regs |> alloc_reg |> fst in
       "        mov     " ^ register_from_reg 8 sr ^ ", rdx\n" ^ "        cqo\n"
-      ^ "        idiv    " ^ register_from_reg 8 r2 ^ "\n"
+      ^ "        idiv    " ^ register_from_reg 8 r2 ^ "\n" ^
+      (if rem then "        mov     rax, rdx\n" else "")
       ^ "        mov     rdx, " ^ register_from_reg 8 sr
-  | IDiv (out, r1, T3, r2 :: free_regs) ->
+  | (out, r1, T3, r2 :: free_regs) ->
       let raxx, _ = alloc_reg free_regs in
       "        mov     " ^ register_from_reg 8 raxx ^ ", rax\n"
       ^ "        mov     " ^ register_from_reg 8 r2 ^ ", rdx\n"
       ^ "        mov     rax, " ^ register_from_reg 8 r1 ^ "\n"
       ^ "        cqo\n" ^ "        idiv    " ^ register_from_reg 8 r2 ^ "\n"
-      ^ "        mov     " ^ register_from_reg 8 out ^ ", rax\n"
+      ^ "        mov     " ^ register_from_reg 8 out ^ (if not rem then ", rax\n" else ", rdx\n")
       ^ "        mov     rax, " ^ register_from_reg 8 raxx
-  | IDiv (out, r1, r2, free_regs) ->
+  | (out, r1, r2, free_regs) ->
       let raxx, free_regs = alloc_reg free_regs in
       let rdxx, _ = alloc_reg free_regs in
       "        mov     " ^ register_from_reg 8 raxx ^ ", rax\n"
       ^ "        mov     " ^ register_from_reg 8 rdxx ^ ", rdx\n"
       ^ "        mov     rax, " ^ register_from_reg 8 r1 ^ "\n"
       ^ "        cqo\n" ^ "        idiv    " ^ register_from_reg 8 r2 ^ "\n"
-      ^ "        mov     " ^ register_from_reg 8 out ^ ", rax\n"
+      ^ "        mov     " ^ register_from_reg 8 out ^ (if not rem then ", rax\n" else ", rdx\n")
       ^ "        mov     rdx, " ^ register_from_reg 8 rdxx ^ "\n"
       ^ "        mov     rax, " ^ register_from_reg 8 raxx
-  | ILowerEquals(out, r1, r2, _) -> (
-    "        cmp     " ^ register_from_reg 8 r1 ^ ", " ^ register_from_reg 8 r2 ^ "\n" ^
-    "        setle   " ^ register_from_reg 1 out ^ "\n" ^
-    "        movzx   " ^ register_from_reg 8 out ^ ", " ^ register_from_reg 1 out
-  )
-  | _ -> "; Not implemented!"
 
 and is_arg = function
   | A0 -> 0

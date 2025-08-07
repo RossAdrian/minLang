@@ -32,7 +32,6 @@ Also, this project is currently *WIP*. The following features are still under co
 
 - More x64 tests
 - RISC-V testing infrastructure
-- Complete missing x64 binary comparasion operators (only `<=` is implemented)
 - Add support for variadic C function calls (i.e. `fn printf(fmt: ptr<char>, ...): int;` declaration support)
 
 ## 💻 Example
